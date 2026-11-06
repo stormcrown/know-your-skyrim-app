@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="auto">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Know your Skyrim</title>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<header class="top">
+			<div class="brand">
+				<span class="eye">◉</span>
+				<div>
+					<h1>Know your Skyrim</h1>
+					<p id="subtitle">读索引中…</p>
+				</div>
+			</div>
+			<div class="top-actions">
+				<select id="theme" title="主题">
+					<option value="auto">跟随系统</option>
+					<option value="light">浅色</option>
+					<option value="dark">深色</option>
+					<option value="github-light">GitHub 浅色</option>
+					<option value="github-dark">GitHub 深色</option>
+					<option value="vscode">VS Code 深色</option>
+					<option value="webstorm">WebStorm 深色</option>
+				</select>
+				<button id="settings" class="icon-button" title="设置">⚙</button>
+			</div>
+		</header>
+
+		<div class="querybar">
+			<div class="query-field search-field">
+				<span class="query-label">搜索</span>
+				<input id="q" type="search" placeholder="名字、书、任务日志；@插件  #关键词  $效果  -排除词" autocomplete="off" spellcheck="false" />
+			</div>
+			<div class="query-field">
+				<span class="query-label">插件</span>
+				<div class="combo" id="plugin-combo">
+					<input id="plugin-input" type="search" placeholder="全部插件（可搜索）" autocomplete="off" spellcheck="false" />
+					<button id="plugin-clear" class="combo-clear" title="清空插件筛选" hidden>✕</button>
+					<div id="plugin-list" class="combo-list" hidden></div>
+				</div>
+			</div>
+			<div class="query-field">
+				<span class="query-label">每页</span>
+				<select id="pageSize" title="每页条数">
+					<option value="20">20</option>
+					<option value="50" selected>50</option>
+					<option value="100">100</option>
+					<option value="200">200</option>
+				</select>
+			</div>
+			<div class="query-field">
+				<span class="query-label">过滤</span>
+				<button id="toggle-internal" class="filter on" title="无名、编辑器名、测试、只给游戏用的任务和控制器角色">✓ 隐藏内部数据</button>
+			</div>
+		</div>
+
+		<nav id="families" class="families"></nav>
+
+		<div id="subkinds" class="subkinds" hidden></div>
+
+		<main>
+			<section class="list-pane">
+				<div class="list-head">
+					<span id="result-count">—</span>
+					<span class="dim">点表头排序</span>
+					<span id="save-chip" class="save-chip" hidden></span>
+				</div>
+				<div class="results-wrap">
+					<div id="results" class="results"></div>
+					<div id="empty-state" class="empty-state" hidden>没有匹配的东西，换个词试试。</div>
+				</div>
+				<div id="pager" class="pager">
+					<button id="first" title="第一页">«</button>
+					<button id="prev" title="上一页">‹</button>
+					<span id="page-info">—</span>
+					<button id="next" title="下一页">›</button>
+					<button id="last" title="最后一页">»</button>
+				</div>
+			</section>
+
+			<section id="detail" class="detail-pane">
+				<div class="empty">
+					<p>左边挑一条，或者搜点什么。</p>
+					<p class="hint">搜索语法：<code>@skyrim</code> 只看某个插件 · <code>#关键字</code> · <code>$效果名</code> · <code>钢制 -书</code></p>
+				</div>
+			</section>
+		</main>
+
+		<div id="settings-panel" class="settings" hidden>
+			<div class="settings-card">
+				<div class="settings-head">
+					<h2>数据来源</h2>
+					<button id="settings-close" class="icon-button">✕</button>
+				</div>
+
+				<label class="field">
+					<span>Mod Organizer 实例</span>
+					<select id="instance"></select>
+				</label>
+
+				<label class="field">
+					<span>配置（Profile）</span>
+					<select id="profile"></select>
+				</label>
+
+				<label class="field">
+					<span>字符串语言</span>
+					<select id="language">
+						<option value="chinese">chinese（中文）</option>
+						<option value="english">english</option>
+					</select>
+				</label>
+
+				<label class="field">
+					<span>存档（读角色信息，只读不改）</span>
+					<select id="save"></select>
+				</label>
+
+				<div id="save-info" class="save-info" hidden></div>
+				<div id="progress-info" class="save-info" hidden></div>
+
+				<div class="settings-actions">
+					<button id="rebuild" class="primary">重建索引</button>
+					<span id="rebuild-hint" class="dim"></span>
+				</div>
+
+				<div id="progress-wrap" class="progress-wrap" hidden>
+					<div class="progress"><div id="progress-bar"></div></div>
+					<div id="progress-text" class="dim"></div>
+				</div>
+
+				<p class="dim small">
+					重建索引时页面会短暂不可用。任务进度还读不出来——存档里的变更记录格式没有可靠文档，我不打算猜。
+				</p>
+			</div>
+		</div>
+
+		<script src="app.js"></script>
+	</body>
+</html>

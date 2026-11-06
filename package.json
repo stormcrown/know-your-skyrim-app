@@ -1,0 +1,18 @@
+{
+  "name": "know-your-skyrim-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An external catalogue of your Skyrim SE load order: every item, person, quest, place and perk, searchable outside the game.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "bin": {
+    "know-your-skyrim-app": "src/cli.js"
+  },
+  "scripts": {
+    "index": "node src/cli.js index",
+    "start": "node src/cli.js serve",
+    "spike": "node tools/spike.js"
+  }
+}
