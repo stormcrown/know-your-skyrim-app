@@ -356,13 +356,30 @@ function applyBookStyle(config) {
 	root.style.setProperty('--book-drop-font', `${hand}, "${body}"`);
 }
 
-// 界面语言：中文原句 → 英文词条（见 i18n.js），数据（名字、书页正文）不翻
+// 界面语言：auto 跟随系统；中文分简繁；英文走词表（见 i18n.js），数据（名字、书页正文）不翻
+const LANGS = ['auto', 'zh-CN', 'zh-TW', 'en'];
+
+function systemLang() {
+	const tags = [navigator.language, ...(navigator.languages || [])].filter(Boolean);
+	for (const tag of tags) {
+		const lower = String(tag).toLowerCase();
+		if (lower.startsWith('zh')) return /hant|tw|hk|mo/.test(lower) ? 'zh-TW' : 'zh-CN';
+		if (lower.startsWith('en')) return 'en';
+	}
+	return 'en';
+}
+
 function uiLang() {
-	return state.config && state.config.uiLang === 'en' ? 'en' : 'zh';
+	const configured = state.config && state.config.uiLang;
+	if (!configured || configured === 'auto') return systemLang();
+	return LANGS.includes(configured) ? configured : systemLang();
 }
 
 function translateText(text) {
-	if (uiLang() !== 'en' || !text || !text.trim()) return text;
+	if (!text || !text.trim()) return text;
+	const lang = uiLang();
+	if (lang === 'zh-TW') return window.toTraditional ? window.toTraditional(text) : text;
+	if (lang !== 'en') return text;
 	const table = window.KYS_EN || {};
 	const trimmed = text.trim();
 	if (table[trimmed] !== undefined) return text.replace(trimmed, table[trimmed]);
@@ -1031,7 +1048,7 @@ function fillSettings(config) {
 	fillProfiles(config.profiles, config.config.profile);
 	fillSaves(config.saves, config.config.saveFile);
 	$('language').value = config.config.language || 'chinese';
-	$('ui-lang').value = config.config.uiLang === 'en' ? 'en' : 'zh';
+	$('ui-lang').value = LANGS.includes(config.config.uiLang) ? config.config.uiLang : 'auto';
 	fillBookSettings(config.config);
 	applyBookStyle(config.config);
 	renderSaveInfo(config.save);

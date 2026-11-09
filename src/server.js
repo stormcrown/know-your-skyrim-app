@@ -379,7 +379,14 @@ export function createServer(dbFile = DB_FILE) {
 					instanceId: 'instanceId' in body ? String(body.instanceId) : undefined,
 					profile: 'profile' in body ? String(body.profile) : undefined,
 					language: 'language' in body ? String(body.language) : undefined,
-					saveFile: 'saveFile' in body ? String(body.saveFile) : undefined
+					saveFile: 'saveFile' in body ? String(body.saveFile) : undefined,
+					// 界面语言和书籍排版也走这一页保存，别被白名单吃掉
+					uiLang: 'uiLang' in body ? String(body.uiLang) : undefined,
+					bookBodyFont: 'bookBodyFont' in body ? String(body.bookBodyFont) : undefined,
+					bookHandFont: 'bookHandFont' in body ? String(body.bookHandFont) : undefined,
+					bookTitleFont: 'bookTitleFont' in body ? String(body.bookTitleFont) : undefined,
+					bookFontSize:
+						'bookFontSize' in body ? Math.min(34, Math.max(12, Number(body.bookFontSize) || 18)) : undefined
 				});
 				const needsRebuild =
 					before.instanceId !== next.instanceId || before.profile !== next.profile || before.language !== next.language;

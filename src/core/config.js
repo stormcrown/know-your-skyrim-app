@@ -15,7 +15,7 @@ const DEFAULTS = {
 	profile: '',
 	language: 'chinese',
 	// 界面语言：zh / en，默认中文
-	uiLang: 'zh',
+	uiLang: 'auto',
 	saveFile: '',
 	port: 4820,
 	// 书籍阅读页的排版：留空就用系统默认，手写体和花体可以单独指定
