@@ -19,6 +19,22 @@ const SLOT_PARTS = {
 	盾牌: '盾牌'
 };
 
+// The journal's own grouping, from QUST DNAM offset 8.
+const QUEST_TYPES = {
+	0: '未分类',
+	1: '主线',
+	2: '法师学院',
+	3: '盗贼公会',
+	4: '黑暗兄弟会',
+	5: '战友团',
+	6: '杂项',
+	7: '魔神',
+	8: '支线',
+	9: '内战',
+	10: '黎明守卫',
+	11: '龙裔'
+};
+
 const QUEST_RULES = [
 	[/^MQ/i, '主线'],
 	[/^DLC1/i, '黎明守卫'],
@@ -119,8 +135,10 @@ export function classify(entry) {
 			return { kind: data.female ? '女' : '男' };
 		case 'faction':
 			return { kind: '派系' };
-		case 'quest':
-			return { kind: questKind(entry.edid), radiant: isRadiant(entry.edid, entry.name) ? 1 : 0 };
+		case 'quest': {
+			const type = entry.data && entry.data.questType;
+			return { kind: QUEST_TYPES[type] || questKind(entry.edid), radiant: isRadiant(entry.edid, entry.name) ? 1 : 0 };
+		}
 		case 'place':
 			return { kind: '地点' };
 		case 'cell':
@@ -145,6 +163,8 @@ export function classify(entry) {
 			return { kind: '物品' };
 		case 'leveledActor':
 			return { kind: '角色' };
+		case 'global':
+			return { kind: '全局变量' };
 		case 'race':
 			return { kind: '种族' };
 		case 'class':

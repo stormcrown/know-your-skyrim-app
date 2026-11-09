@@ -8,12 +8,14 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-import { getEntry, plugins, search, stats } from './core/query.js';
-import { detectInstances } from './core/loadorder.js';
+import { getEntry, hexId, plugins, search, stats } from './core/query.js';
+import { detectInstances, profileMods } from './core/loadorder.js';
 import { listSaves, readSaveFile } from './core/savegame.js';
 import { DB_FILE, loadConfig, saveConfig } from './core/config.js';
 import { createSaveTables } from './core/db.js';
 import { readQuestProgress } from './core/savequests.js';
+import { resolveBookTokens, serveBookArt } from './core/booktext.js';
+import { addressLibrary, compatibilityChecks, gameVersions, resolveGamePath, sksePlugins, systemReport } from './core/systemcheck.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -92,19 +94,20 @@ export function createServer(dbFile = DB_FILE) {
 	}
 
 	function applySavedProgress(force) {
+		const config = loadConfig();
+		if (!config.saveFile) return null;
 		const progress = loadProgressJson();
 		if (!progress || !state.db) return null;
-		const config = loadConfig();
-		if (!force && config.saveFile && progress.file !== config.saveFile) return null;
+		if (!force && progress.file !== config.saveFile) return null;
 		state.progress = progress;
 		createSaveTables(state.db);
 		state.db.exec('DELETE FROM save_progress');
 		const stmt = state.db.prepare(
-			'INSERT OR REPLACE INTO save_progress (quest, current_stage, done_stages, stage_count, stages) VALUES (?, ?, ?, ?, ?)'
+			'INSERT OR REPLACE INTO save_progress (quest, current_stage, done_stages, stage_count, state, stages) VALUES (?, ?, ?, ?, ?, ?)'
 		);
 		state.db.exec('BEGIN');
 		for (const quest of progress.quests || []) {
-			stmt.run(quest.formid, quest.currentStage ?? null, quest.doneStages || 0, quest.stages?.length || 0, JSON.stringify(quest.stages || []));
+			stmt.run(quest.formid, quest.currentStage ?? null, quest.doneStages || 0, quest.stages?.length || 0, quest.state || 'active', JSON.stringify(quest.stages || []));
 		}
 		state.db.exec('COMMIT');
 		return progress;
@@ -125,7 +128,8 @@ export function createServer(dbFile = DB_FILE) {
 			questStages.set(row.formid, {
 				formid: row.formid,
 				name: row.name,
-				stages: new Set((data.stages || []).map((s) => s.index))
+				stages: new Set((data.stages || []).map((s) => s.index)),
+				complete: new Set((data.stages || []).filter((s) => s.complete).map((s) => s.index))
 			});
 		}
 		const progress = readQuestProgress(config.saveFile, questStages);
@@ -190,6 +194,8 @@ export function createServer(dbFile = DB_FILE) {
 	}
 
 	function progressSummary() {
+		const config = loadConfig();
+		if (!config.saveFile) return null;
 		const progress = state.progress || loadProgressJson();
 		if (!progress) return null;
 		return {
@@ -201,6 +207,95 @@ export function createServer(dbFile = DB_FILE) {
 			playerName: progress.header?.playerName,
 			playerLevel: progress.header?.playerLevel
 		};
+	}
+
+	function buildSystem() {
+		const meta = stats(state.db).meta;
+		const gamePath = meta.gamePath || resolveGamePath();
+		let duplicates = [];
+		try {
+			duplicates = JSON.parse(meta.duplicates || '[]');
+		} catch {
+			duplicates = [];
+		}
+		const plugins = state.db.prepare('SELECT idx, name, source, masters, light, entries, error FROM plugins ORDER BY idx').all();
+		const progress = loadProgressJson();
+		const config = loadConfig();
+		const { modsDir, mods } = profileMods(config.instanceId, config.profile);
+		const versions = gameVersions(gamePath);
+		const address = addressLibrary(gamePath, modsDir, mods);
+		if (address.length) versions.addressLibrary = address;
+		return {
+			gamePath,
+			versions,
+			sksePlugins: sksePlugins(gamePath, modsDir, mods),
+			checks: compatibilityChecks(
+				state.db,
+				{
+					duplicates,
+					allPlugins: meta.allPlugins || '',
+					saveFullCount: progress?.pluginFullCount || 0,
+					saveLightCount: progress?.pluginLightCount || 0,
+					modsDir,
+					mods
+				},
+				gamePath
+			),
+			plugins,
+			meta
+		};
+	}
+
+	function questChain(startFormid) {
+		const nodes = new Map();
+		const edges = [];
+		const queue = [{ formid: startFormid, depth: 0 }];
+		const seen = new Set([startFormid]);
+		while (queue.length) {
+			const { formid, depth } = queue.shift();
+			if (depth > 4) continue;
+			const row = state.db.prepare('SELECT formid, name, edid FROM entries WHERE formid = ?').get(formid);
+			if (!row) continue;
+			nodes.set(row.formid, { formid: row.formid, hex: hexId(row.formid), name: row.name, edid: row.edid });
+			for (const link of state.db
+				.prepare("SELECT l.rel, e.formid, e.name, e.edid FROM links l JOIN entries e ON e.formid = l.dst WHERE l.src = ? AND l.rel = 'nextQuest'")
+				.all(formid)) {
+				edges.push({ from: row.formid, to: link.formid, rel: 'next' });
+				if (!seen.has(link.formid)) {
+					seen.add(link.formid);
+					queue.push({ formid: link.formid, depth: depth + 1 });
+				}
+			}
+			for (const link of state.db
+				.prepare("SELECT l.src AS formid, e.name, e.edid FROM links l JOIN entries e ON e.formid = l.src WHERE l.dst = ? AND l.rel = 'nextQuest'")
+				.all(formid)) {
+				edges.push({ from: link.formid, to: row.formid, rel: 'prev' });
+				if (!seen.has(link.formid)) {
+					seen.add(link.formid);
+					queue.push({ formid: link.formid, depth: depth + 1 });
+				}
+			}
+			// quest aliases that copy from another quest's alias: a looser relation, still worth showing
+			for (const link of state.db
+				.prepare("SELECT l.rel, e.formid, e.name, e.edid FROM links l JOIN entries e ON e.formid = l.dst WHERE l.src = ? AND l.rel = 'aliasQuest'")
+				.all(formid)) {
+				edges.push({ from: row.formid, to: link.formid, rel: 'alias' });
+				if (!seen.has(link.formid)) {
+					seen.add(link.formid);
+					queue.push({ formid: link.formid, depth: depth + 1 });
+				}
+			}
+			for (const link of state.db
+				.prepare("SELECT l.src AS formid, e.name, e.edid FROM links l JOIN entries e ON e.formid = l.src WHERE l.dst = ? AND l.rel = 'aliasQuest'")
+				.all(formid)) {
+				edges.push({ from: link.formid, to: row.formid, rel: 'alias' });
+				if (!seen.has(link.formid)) {
+					seen.add(link.formid);
+					queue.push({ formid: link.formid, depth: depth + 1 });
+				}
+			}
+		}
+		return { start: startFormid, nodes: [...nodes.values()], edges };
 	}
 
 	function startRebuild() {
@@ -256,7 +351,9 @@ export function createServer(dbFile = DB_FILE) {
 	const server = http.createServer(async (req, res) => {
 		const url = new URL(req.url, 'http://localhost');
 		try {
-			if (!url.pathname.startsWith('/api/')) return serveStatic(res, url.pathname);
+			if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/bookart/')) {
+				return serveStatic(res, url.pathname);
+			}
 
 			if (url.pathname === '/api/config' && req.method === 'GET') {
 				const config = loadConfig();
@@ -310,6 +407,31 @@ export function createServer(dbFile = DB_FILE) {
 				return json(res, { rebuild: state.rebuild });
 			}
 
+			if (url.pathname === '/api/system') {
+				if (!state.db) return json(res, { error: '还没有索引' }, 503);
+				return json(res, buildSystem());
+			}
+			if (url.pathname === '/api/system/report') {
+				if (!state.db) return json(res, { error: '还没有索引' }, 503);
+				const system = buildSystem();
+				const meta = stats(state.db).meta;
+				const text = systemReport({ versions: system.versions, skse: system.sksePlugins, checks: system.checks, plugins: system.plugins, meta, gamePath: system.gamePath });
+				res.writeHead(200, {
+					'Content-Type': 'text/plain; charset=utf-8',
+					'Content-Disposition': 'attachment; filename="know-your-skyrim-report.txt"',
+					'Cache-Control': 'no-store'
+				});
+				return res.end(text);
+			}
+
+			// The quest's chain: every quest whose NAM0 points at this one, and every quest this one points at.
+			if (url.pathname.startsWith('/api/chain/')) {
+				if (!state.db) return json(res, { error: '还没有索引' }, 503);
+				const key = decodeURIComponent(url.pathname.slice('/api/chain/'.length));
+				const formid = /^\d+$/.test(key) ? Number(key) : parseInt(key, 16);
+				return json(res, questChain(formid));
+			}
+
 			if (!state.db) {
 				return json(res, { error: state.rebuild.running ? '正在重建索引' : '还没有索引', rebuilding: state.rebuild.running }, 503);
 			}
@@ -344,15 +466,27 @@ export function createServer(dbFile = DB_FILE) {
 						magnitude: url.searchParams.get('magnitude'),
 						flags: split('flags'),
 						keyword: url.searchParams.get('keyword') || '',
+						questState: url.searchParams.get('questState') || '',
+						objectives: url.searchParams.get('objectives') || '',
 						sortDir: url.searchParams.get('sortDir') || 'asc'
 					})
 				);
 			}
 			if (url.pathname.startsWith('/api/entry/')) {
 				const key = decodeURIComponent(url.pathname.slice('/api/entry/'.length));
-				const entry = getEntry(state.db, /^\d+$/.test(key) ? Number(key) : 0, key);
+				// 客户端可能送十进制数字，也可能送十六进制串：先按十进制找，找不到再按十六进制
+				let entry = /^\d+$/.test(key) ? getEntry(state.db, Number(key), null) : null;
+				if (!entry) entry = getEntry(state.db, 0, key);
 				if (!entry) return json(res, { error: '没有这个记录' }, 404);
+				if (entry.sig === 'BOOK' && entry.text) {
+					const summary = progressSummary();
+					entry.rawText = entry.text;
+					entry.text = resolveBookTokens(state.db, entry.text, summary?.playerName || '');
+				}
 				return json(res, entry);
+			}
+			if (url.pathname.startsWith('/bookart/')) {
+				return serveBookArt(req, res, path.join(ROOT, 'data', 'bookart'));
 			}
 			return json(res, { error: '没有这个接口' }, 404);
 		} catch (err) {

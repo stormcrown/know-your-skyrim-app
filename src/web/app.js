@@ -17,7 +17,9 @@ const FAMILIES = [
 	{ key: 'magic', label: '法术', types: ['spell', 'shout', 'magicEffect', 'enchantment'], sigs: [] },
 	{ key: 'craft', label: '配方', types: ['recipe'], sigs: [] },
 	{ key: 'keyword', label: '关键词', types: ['keyword'], sigs: [] },
-	{ key: 'leveled', label: '等级表', types: ['leveledItem', 'leveledActor'], sigs: [] }
+	{ key: 'leveled', label: '等级表', types: ['leveledItem', 'leveledActor'], sigs: [] },
+	{ key: 'system', label: '系统', types: [], sigs: [] },
+	{ key: 'settings', label: '配置', types: [], sigs: [] }
 ];
 
 // One chip row per secondary classification; armour is the one with two of them.
@@ -83,11 +85,12 @@ const SUB_KINDS = {
 			chips: ['主线', '支线', '内战', '盗贼公会', '黑暗兄弟会', '法师学院', '战友团', '魔神', '黎明守卫', '龙裔', '跑腿', '对话', '其他']
 		},
 		{
-			field: 'met',
+			field: 'questState',
 			label: '进度',
 			chips: [
-				{ label: '做过', value: 'met' },
-				{ label: '没做过', value: 'unmet' }
+				{ label: '已完成', value: 'done' },
+				{ label: '进行中', value: 'active' },
+				{ label: '未接受', value: 'none' }
 			]
 		},
 		{
@@ -123,7 +126,7 @@ const SORT_OPTIONS = {
 	scroll: ['name', 'value', 'weight'],
 	misc: ['name', 'value', 'weight'],
 	actor: ['name', 'level'],
-	quest: ['name', 'stages'],
+	quest: ['name', 'stages', 'objectives'],
 	place: ['name'],
 	perk: ['name', 'ranks'],
 	magic: ['name', 'cost'],
@@ -229,7 +232,7 @@ const COLUMNS = {
 	quest: [
 		{ key: 'name', label: '名字', sort: 'name' },
 		{ key: 'kind', label: '来历', sort: 'kind' },
-		{ key: 'met', label: '进度', sort: 'met' },
+		{ key: 'met', label: '进度', sort: 'questState' },
 		{ key: 'radiant', label: '性质', sort: 'radiant' },
 		{ key: 'plugin', label: '插件', sort: 'plugin' }
 	],
@@ -280,6 +283,9 @@ const state = {
 	part: '',
 	tags: [],
 	radiant: '',
+	questState: '',
+	showQuestConditions: false,
+	objectives: '',
 	effect: '',
 	magnitude: '',
 	keyword: '',
@@ -334,6 +340,20 @@ async function api(path, options) {
 function currentTheme() {
 	const saved = localStorage.getItem('kys-theme');
 	return THEMES.includes(saved) ? saved : 'auto';
+}
+
+// 书籍页的字体：正文、手写体、标题三档，留空就退回系统衬线
+function applyBookStyle(config) {
+	const root = document.documentElement;
+	const body = (config && config.bookBodyFont) || 'Georgia, "Songti SC", SimSun, serif';
+	const hand = (config && config.bookHandFont) || body;
+	const title = (config && config.bookTitleFont) || body;
+	const size = (config && Number(config.bookFontSize)) || 18;
+	root.style.setProperty('--book-body-font', body);
+	root.style.setProperty('--book-hand-font', hand);
+	root.style.setProperty('--book-title-font', title);
+	root.style.setProperty('--book-font-size', size + 'px');
+	root.style.setProperty('--book-drop-font', `${hand}, "${body}"`);
 }
 
 function applyTheme(theme) {
@@ -512,6 +532,8 @@ function renderFamilies() {
 			state.part = '';
 			state.tags = [];
 			state.radiant = '';
+			state.questState = '';
+			state.objectives = '';
 			state.effect = '';
 			state.magnitude = '';
 			state.keyword = '';
@@ -571,7 +593,41 @@ function familyOf(key) {
 	return FAMILIES.find((f) => f.key === key) || FAMILIES[0];
 }
 
+// The settings card is a real DOM element with real handlers; when another page renders, park it back on <body>
+// hidden, instead of letting the detail pane throw it away.
+function detachSettingsCard() {
+	const card = $('settings-card');
+	if (card && card.parentElement === detailEl) {
+		card.hidden = true;
+		document.body.append(card);
+	}
+}
+
+function setWide(on) {
+	document.body.classList.toggle('wide-page', on);
+}
+
 async function search() {
+	detachSettingsCard();
+	if (state.family === 'settings') {
+		setWide(true);
+		resultsEl.textContent = '';
+		$('empty-state').hidden = true;
+		$('result-count').textContent = '配置在右边';
+		$('page-info').textContent = '';
+		await renderSettingsPage();
+		return;
+	}
+	if (state.family === 'system') {
+		setWide(true);
+		resultsEl.textContent = '';
+		$('empty-state').hidden = true;
+		$('result-count').textContent = '系统详情在右边';
+		$('page-info').textContent = '';
+		renderSystem();
+		return;
+	}
+	setWide(false);
 	const family = familyOf(state.family);
 	const params = new URLSearchParams({
 		q: state.q,
@@ -590,6 +646,8 @@ async function search() {
 	if (state.tags.length) params.set('tags', state.tags.join(','));
 	if (state.radiant) params.set('radiant', state.radiant);
 	if (state.journal) params.set('journal', state.journal);
+	if (state.questState) params.set('questState', state.questState);
+	if (state.objectives) params.set('objectives', state.objectives);
 	if (state.effect) params.set('effect', state.effect);
 	if (state.flags.length) params.set('flags', state.flags.join(','));
 	if (state.keyword) params.set('keyword', state.keyword);
@@ -613,7 +671,9 @@ async function search() {
 function renderSubKinds() {
 	const box = $('subkinds');
 	box.textContent = '';
-	const lines = SUB_KINDS[state.family] || [];
+	let lines = SUB_KINDS[state.family] || [];
+	// the save's progress chips only make sense once a save has been read
+	if (state.family === 'quest' && !state.progress) lines = lines.filter((line) => line.field !== 'questState');
 	if (!lines.length) {
 		box.hidden = true;
 		return;
@@ -758,7 +818,8 @@ function renderRows() {
 			if (column.key === 'name') {
 				td.classList.add('name-col');
 				td.append(el('span', null, row.name || `（无名 ${row.type}）`));
-				if (row.type === 'quest' && row.met) td.append(el('span', 'tag met-tag', '做过'));
+				if (row.type === 'quest' && row.questState === 'done') td.append(el('span', 'tag met-tag', '已完成'));
+				else if (row.type === 'quest' && row.met) td.append(el('span', 'tag', '进行中'));
 				if (row.type === 'quest' && !row.journal) td.append(el('span', 'tag hidden-tag', '无日记'));
 				if (row.internal) td.append(el('span', 'tag hidden-tag', row.hiddenReason || '内部'));
 			} else {
@@ -822,6 +883,8 @@ function cellValue(row, key) {
 			return row.raceName || '';
 		case 'effect':
 			return row.firstEffect || '';
+		case 'objectives':
+			return (data.objectives || []).length || '';
 		case 'effect1':
 		case 'effect2':
 		case 'effect3':
@@ -840,7 +903,8 @@ function cellValue(row, key) {
 		case 'desc':
 			return data.description || '';
 		case 'met':
-			return row.met ? '做过' : '没做过';
+			if (!state.progress) return '';
+			return row.questState === 'done' ? '已完成' : row.met ? '进行中' : '未接受';
 		case 'radiant':
 			return row.radiant ? '随机' : '';
 		case 'plugin':
@@ -918,9 +982,27 @@ function fillSettings(config) {
 	fillProfiles(config.profiles, config.config.profile);
 	fillSaves(config.saves, config.config.saveFile);
 	$('language').value = config.config.language || 'chinese';
+	fillBookSettings(config.config);
+	applyBookStyle(config.config);
 	renderSaveInfo(config.save);
 	renderProgress(config.progress);
 	renderRebuildState(config.rebuild);
+}
+
+function fillBookSettings(config) {
+	$('book-body-font').value = config.bookBodyFont || '';
+	$('book-hand-font').value = config.bookHandFont || '';
+	$('book-title-font').value = config.bookTitleFont || '';
+	$('book-font-size').value = config.bookFontSize || 18;
+}
+
+function readBookSettings() {
+	return {
+		bookBodyFont: $('book-body-font').value.trim(),
+		bookHandFont: $('book-hand-font').value.trim(),
+		bookTitleFont: $('book-title-font').value.trim(),
+		bookFontSize: Number($('book-font-size').value) || 18
+	};
 }
 
 function fillProfiles(profiles, selected) {
@@ -1013,20 +1095,46 @@ function renderRebuildState(rebuild) {
 	}
 }
 
-async function openSettings() {
-	$('settings-panel').hidden = false;
+async function renderSettingsPage() {
+	const card = $('settings-card');
+	card.hidden = false;
+	if (card.parentElement !== detailEl) {
+		detailEl.textContent = '';
+		detailEl.append(el('h2', 'detail-title', '配置'));
+		detailEl.append(el('div', 'detail-sub', '换加载顺序、换存档、重建索引——都在这一页'));
+		detailEl.append(card);
+	}
 	try {
 		const config = await api('/api/config');
 		state.config = config.config;
 		state.saveMeta = config.save;
+		state.progress = config.progress || null;
 		fillSettings(config);
 	} catch (err) {
 		$('rebuild-hint').textContent = '读配置失败：' + err.message;
 	}
 }
 
+function openSettings() {
+	state.family = 'settings';
+	state.kind = '';
+	state.part = '';
+	state.tags = [];
+	state.radiant = '';
+	state.questState = '';
+	state.objectives = '';
+	state.effect = '';
+	state.page = 0;
+	renderFamilies();
+	renderSubKinds();
+	search();
+}
+
 function closeSettings() {
-	$('settings-panel').hidden = true;
+	state.family = 'all';
+	renderFamilies();
+	renderSubKinds();
+	search();
 }
 
 async function postConfig(patch) {
@@ -1150,10 +1258,6 @@ function wire() {
 		applyTheme(theme);
 	});
 	$('settings').onclick = openSettings;
-	$('settings-close').onclick = closeSettings;
-	$('settings-panel').addEventListener('click', (event) => {
-		if (event.target === $('settings-panel')) closeSettings();
-	});
 	$('instance').addEventListener('change', async () => {
 		const instanceId = $('instance').value;
 		const result = await postConfig({ instanceId, profile: '' });
@@ -1163,6 +1267,14 @@ function wire() {
 	$('profile').addEventListener('change', () => postConfig({ profile: $('profile').value }));
 	$('language').addEventListener('change', () => postConfig({ language: $('language').value }));
 	$('save').addEventListener('change', () => pickSave($('save').value));
+	for (const id of ['book-body-font', 'book-hand-font', 'book-title-font', 'book-font-size']) {
+		const input = $(id);
+		input.addEventListener('change', async () => {
+			const patch = readBookSettings();
+			applyBookStyle(patch);
+			await postConfig(patch);
+		});
+	}
 	$('rebuild').addEventListener('click', rebuild);
 	$('toggle-internal').addEventListener('click', () => {
 		state.hideInternal = !state.hideInternal;
@@ -1179,8 +1291,7 @@ function wire() {
 			$('q').select();
 		}
 		if (event.key === 'Escape') {
-			if (!$('settings-panel').hidden) closeSettings();
-			else if (document.activeElement === $('q')) {
+			if (document.activeElement === $('q')) {
 				$('q').value = '';
 				state.q = '';
 				state.page = 0;
@@ -1194,18 +1305,149 @@ function wire() {
 	});
 }
 
+/* ---------- system ---------- */
+
+async function renderSystem() {
+	detailEl.textContent = '';
+	let system;
+	try {
+		system = await api('/api/system');
+	} catch (err) {
+		detailEl.append(el('div', 'empty', err.status === 503 ? '还没有索引，先重建一次。' : '读不到系统信息：' + err.message));
+		return;
+	}
+	detailEl.append(el('h2', 'detail-title', '系统详情'));
+	detailEl.append(el('div', 'detail-sub', system.gamePath || '（游戏目录不明）'));
+
+	const section = (title, open = false) => {
+		const box = document.createElement('details');
+		box.className = 'sys-section';
+		box.open = open;
+		const summary = document.createElement('summary');
+		summary.append(el('span', null, title));
+		box.append(summary);
+		detailEl.append(box);
+		return { box, summary };
+	};
+
+	const versions = system.versions || {};
+	{
+		const { box } = section('版本', true);
+		box.append(
+			statsTable([
+				['SkyrimSE.exe', versions.game?.fileVersion || '读不到'],
+				['SKSE', versions.skse?.fileVersion || '读不到'],
+				['CreationKit', versions.creationKit?.fileVersion || '读不到'],
+				['Address Library', (versions.addressLibrary || []).join(', ') || '没有']
+			])
+		);
+	}
+
+	const meta = system.meta || {};
+	{
+		const { box } = section('索引');
+		box.append(
+			statsTable([
+				['配置', meta.profile || ''],
+				['完整插件', meta.fullPlugins || ''],
+				['轻量插件', meta.lightPlugins || ''],
+				['记录', meta.entryCount || ''],
+				['字符串语言', meta.language || ''],
+				['建索引时间', meta.builtAt ? new Date(meta.builtAt).toLocaleString('zh-CN', { hour12: false }) : '']
+			])
+		);
+	}
+
+	{
+		const checks = system.checks || [];
+		const errors = checks.filter((check) => check.level === 'error').length;
+		const warns = checks.filter((check) => check.level === 'warn').length;
+		const { box, summary } = section(`兼容性检查（错误 ${errors} · 警告 ${warns} · 共 ${checks.length} 项）`, true);
+		if (!checks.length) box.append(el('div', 'dim', '没有发现问题。'));
+		for (const check of checks) {
+			const item = el('div', 'check check-' + check.level);
+			const title = el('div', 'check-title');
+			title.append(el('span', 'check-level', { error: '错误', warn: '警告', info: '提示' }[check.level] || check.level));
+			title.append(el('span', null, check.title));
+			item.append(title);
+			if (check.detail) item.append(el('div', 'dim', check.detail));
+			if (check.list?.length) {
+				const list = el('div', 'check-list');
+				for (const entry of check.list.slice(0, 60)) list.append(el('span', 'chip plain', entry));
+				if (check.list.length > 60) list.append(el('span', 'dim', `…还有 ${check.list.length - 60} 项`));
+				item.append(list);
+			}
+			box.append(item);
+		}
+	}
+
+	{
+		const plugins = system.sksePlugins || [];
+		const { box } = section(`SKSE 插件（${plugins.length} 个）`);
+		if (!plugins.length) box.append(el('div', 'dim', '没有 SKSE 插件。'));
+		else {
+			const table = el('table', 'stats');
+			const head = el('tr');
+			head.append(el('th', null, '插件'));
+			head.append(el('th', null, '版本'));
+			head.append(el('th', null, '配套 ini'));
+			head.append(el('th', null, '来自'));
+			table.append(head);
+			for (const plugin of plugins) {
+				const tr = el('tr');
+				tr.append(el('td', 'v', plugin.name));
+				tr.append(el('td', 'k', plugin.fileVersion || '—'));
+				tr.append(el('td', 'k', plugin.ini ? '有' : '—'));
+				tr.append(el('td', 'k', plugin.from || ''));
+				table.append(tr);
+			}
+			box.append(table);
+		}
+	}
+
+	{
+		const broken = (system.plugins || []).filter((plugin) => plugin.error || plugin.entries === 0);
+		const { box } = section(`解析有问题的插件（${broken.length} 个）`);
+		if (!broken.length) box.append(el('div', 'dim', '全部插件都读出来了。'));
+		else {
+			const table = el('table', 'stats');
+			for (const plugin of broken.slice(0, 120)) {
+				const tr = el('tr');
+				tr.append(el('td', 'v', plugin.name));
+				tr.append(el('td', 'k', plugin.error || '0 条记录'));
+				table.append(tr);
+			}
+			box.append(table);
+			if (broken.length > 120) box.append(el('div', 'dim', `…还有 ${broken.length - 120} 个`));
+		}
+	}
+
+	{
+		const { box } = section('检测报告');
+		const download = el('a', 'chip', '下载 know-your-skyrim-report.txt');
+		download.href = '/api/system/report';
+		download.setAttribute('download', 'know-your-skyrim-report.txt');
+		box.append(download);
+		box.append(el('div', 'dim', '纯文本，可以直接丢给网页版 AI 接着分析。'));
+	}
+}
+
 /* ---------- detail ---------- */
 
 async function openEntry(formid) {
 	let entry;
+	// formid 有时是数字（列表里），有时是十六进制字符串（链接、地址栏），统一成 8 位十六进制
+	const key =
+		typeof formid === 'number' ? formid.toString(16).toUpperCase().padStart(8, '0') : String(formid).toUpperCase();
 	try {
-		entry = await api('/api/entry/' + encodeURIComponent(formid));
+		entry = await api('/api/entry/' + encodeURIComponent(key));
 	} catch (err) {
 		detailEl.textContent = '';
 		detailEl.append(el('div', 'empty', '读不到这一条：' + err.message));
 		return;
 	}
 	state.activeFormid = entry.formid;
+	state.lastEntry = entry;
 	for (const li of resultsEl.children) li.classList.toggle('active', li.dataset.formid === String(entry.formid));
 	history.replaceState(null, '', `#/entry/${entry.hex}`);
 	renderDetail(entry);
@@ -1285,7 +1527,9 @@ function renderDetail(entry) {
 	if (entry.type === 'spell' || entry.type === 'shout') renderSpell(entry, section);
 	if (entry.type === 'leveledItem' || entry.type === 'leveledActor') renderLeveled(entry, section);
 
-	if (entry.text && entry.type !== 'quest') {
+	if (entry.sig === 'BOOK') {
+		renderBook(entry, section);
+	} else if (entry.text && entry.type !== 'quest') {
 		section('长文本');
 		detailEl.append(el('div', 'longtext', entry.text));
 	}
@@ -1404,75 +1648,293 @@ function renderQuest(entry, section) {
 	const stages = data.stages || [];
 	const progress = entry.progress || null;
 	const doneAt = new Map((progress?.stages || []).map((stage) => [stage.stage, stage.done]));
+	const startStage = stages.length ? stages.reduce((low, stage) => (stage.index < low.index ? stage : low), stages[0]) : null;
+	const startConditions = [...(data.conditions || []), ...(startStage?.conditions || [])];
 
+	const stateLabel = progress ? { done: '已完成', active: '进行中' }[progress.state] || '进行中' : '未接受';
 	section('阶段 · 目标 · 日记');
 
+	const summary = el('div', 'quest-summary');
+	const badge = el('span', progress && progress.state === 'done' ? 'met-tag tag' : 'tag', stateLabel);
+	summary.append(badge);
 	if (progress) {
-		const line = el('div', 'quest-summary');
-		line.append(el('span', 'ok', `走过 ${progress.doneStages} / ${progress.stageCount} 个阶段`));
+		summary.append(el('span', 'ok', `　走过 ${progress.doneStages} / ${progress.stageCount} 个阶段`));
 		if (progress.currentStage !== null && progress.currentStage !== undefined) {
-			line.append(el('span', 'dim', `　最远到阶段 ${progress.currentStage}`));
+			summary.append(el('span', 'dim', `　最远到阶段 ${progress.currentStage}`));
 		}
-		detailEl.append(line);
 	} else if (state.progress) {
-		detailEl.append(el('div', 'quest-summary dim', '存档里没有这条任务的记录——还没碰过。'));
+		summary.append(el('span', 'dim', '　存档里没有这条任务的记录——还没碰过。'));
 	}
 
-	// Objectives are their own list in the record: the file does not say which stage adds which objective, so the
-	// app lists them together instead of guessing a stage.
-	const allObjectives = [];
-	for (const stage of stages) for (const objective of stage.objectives || []) allObjectives.push(objective);
-	if (allObjectives.length) {
-		const box = el('div', 'quest-objectives');
-		box.append(el('div', 'dim', '目标'));
-		const list = el('ul', 'effects');
-		for (const objective of allObjectives) {
-			list.append(el('li', null, `[${objective.index}] ${objective.text || '（未写文字的目标）'}`));
+	// The start conditions are behind a button: they are what a player wants when the quest will not start, and
+	// noise the rest of the time. Stage-level conditions are not shown at all.
+	const showStart = Boolean(state.showQuestConditions);
+	const conditionButton = el('button', 'chip', showStart ? '收起开始条件' : `显示开始条件${startStage ? '（阶段 ' + startStage.index + '）' : ''}`);
+	conditionButton.onclick = () => {
+		state.showQuestConditions = !showStart;
+		if (state.lastEntry) renderDetail(state.lastEntry);
+	};
+	summary.append(conditionButton);
+	detailEl.append(summary);
+
+	if (showStart) {
+		const box = el('div', 'quest-conditions');
+		if (!startConditions.length) box.append(el('div', 'dim', '这条任务的开始阶段没写条件。'));
+		else {
+			const list = el('ul', 'effects');
+			for (const condition of startConditions) list.append(el('li', null, condition.text || '（条件）'));
+			box.append(list);
 		}
-		box.append(list);
 		detailEl.append(box);
+	}
+
+	const objectivesAt = new Map();
+	for (const objective of data.objectives || []) {
+		const list = objectivesAt.get(objective.index) || [];
+		list.push(objective);
+		objectivesAt.set(objective.index, list);
 	}
 
 	if (!stages.length) {
 		detailEl.append(el('div', 'dim', '这条任务没有阶段记录。'));
-		return;
+	} else {
+		const table = el('table', 'stats quest-stages');
+		const headRow = el('tr');
+		headRow.append(el('th', null, '阶段'));
+		headRow.append(el('th', null, '目标'));
+		headRow.append(el('th', null, '日记'));
+		if (progress) headRow.append(el('th', null, '你'));
+		table.append(headRow);
+
+		for (const stage of stages) {
+			const tr = el('tr');
+			if (progress && doneAt.get(stage.index)) tr.classList.add('done');
+			if (progress && stage.index === progress.currentStage) tr.classList.add('current');
+
+			const stageCell = el('td', 'k stage-no');
+			stageCell.append(el('span', null, String(stage.index)));
+			if (stage.complete) stageCell.append(el('span', 'tag met-tag', '完成'));
+			if (stage.fail) stageCell.append(el('span', 'tag hidden-tag', '失败'));
+			tr.append(stageCell);
+
+			const objectiveCell = el('td', 'v multiline');
+			const here = objectivesAt.get(stage.index) || [];
+			const lines = [];
+			for (const objective of here) {
+				lines.push(`[${objective.index}] ${objective.text || '（未写文字）'}`);
+				for (const condition of objective.conditions || []) lines.push('　条件：' + (condition.text || '（条件）'));
+			}
+			objectiveCell.textContent = lines.join('\n');
+			tr.append(objectiveCell);
+
+			const logCell = el('td', 'v multiline journal');
+			const log = stage.log && stage.log.trim() ? stage.log : '';
+			logCell.textContent = log || '（这一阶段没有日记）';
+			if (!log) logCell.classList.add('dim');
+			tr.append(logCell);
+
+			if (progress) tr.append(el('td', doneAt.get(stage.index) ? 'ok' : 'dim', doneAt.get(stage.index) ? '走过 ✓' : '没走过'));
+			table.append(tr);
+		}
+		detailEl.append(table);
+
+		const orphans = [...objectivesAt.entries()].filter(([index]) => !stages.some((stage) => stage.index === index));
+		if (orphans.length) {
+			const box = el('div', 'quest-objectives');
+			box.append(el('div', 'dim', '没有对应阶段的目标'));
+			const list = el('ul', 'effects');
+			for (const [, objectives] of orphans) {
+				for (const objective of objectives) list.append(el('li', null, `[${objective.index}] ${objective.text || '（未写文字）'}`));
+			}
+			box.append(list);
+			detailEl.append(box);
+		}
 	}
 
-	const table = el('table', 'stats quest-stages');
-	const head = el('tr');
-	head.append(el('th', null, '阶段'));
-	head.append(el('th', null, '日记'));
-	if (progress) head.append(el('th', null, '你'));
-	table.append(head);
+	const chainButton = el('button', 'chip plain', '显示任务链');
+	const chainBox = el('div', 'quest-chain');
+	chainBox.hidden = true;
+	chainButton.onclick = async () => {
+		if (!chainBox.hidden) {
+			chainBox.hidden = true;
+			chainButton.textContent = '显示任务链';
+			return;
+		}
+		chainButton.textContent = '收起任务链';
+		chainBox.hidden = false;
+		chainBox.textContent = '读任务链…';
+		try {
+			const chain = await api('/api/chain/' + entry.hex);
+			renderChain(chain, entry, chainBox);
+		} catch (err) {
+			chainBox.textContent = '读不到任务链：' + err.message;
+		}
+	};
+	section('前后任务');
+	detailEl.append(chainButton);
+	detailEl.append(chainBox);
+}
 
-	for (const stage of stages) {
-		const tr = el('tr');
-		if (progress && doneAt.get(stage.index)) tr.classList.add('done');
-		if (progress && stage.index === progress.currentStage) tr.classList.add('current');
+// 一本书：按游戏里那套标记（<font face='$HandwrittenFont' size='23'>、<b>、<br>）排成一页纸，
+// 标题居中、首字放大，底下留一个「原始文本」开关，方便核对原文。
+const BOOK_FONTS = {
+	$handwrittenfont: 'hw',
+	$printedfont: 'printed',
+	$magescriptfont: 'mage',
+	$skyrimbooks: 'books'
+};
 
-		tr.append(el('td', 'k stage-no', String(stage.index)));
-		const logCell = el('td', 'v multiline journal');
-		const log = stage.log && stage.log.trim() ? stage.log : '';
-		logCell.textContent = log || '（这一阶段没有日记）';
-		if (!log) logCell.classList.add('dim');
-		tr.append(logCell);
-		if (progress) tr.append(el('td', doneAt.get(stage.index) ? 'ok' : 'dim', doneAt.get(stage.index) ? '走过 ✓' : '没走过'));
-		table.append(tr);
+// img://Textures/Interface/Books/Illuminated_Letters/A_letter.png → /bookart/textures/interface/books/illuminated_letters/a_letter.png
+function bookImageSource(source) {
+	const raw = (source || '').replace(/^img:\/\//i, '');
+	if (!raw) return '';
+	return '/bookart/' + raw.replace(/\\/g, '/').toLowerCase();
+}
+
+function bookFontClass(face) {
+	if (!face) return '';
+	const key = face.trim().toLowerCase();
+	return BOOK_FONTS[key] || '';
+}
+
+// 把带标记的正文变成一串节点；遇到不认识的标签就当文字留着，不吞内容
+function renderBookText(text) {
+	const normalized = text.replace(/\r\n?/g, '\n');
+	const tokens = normalized
+		.split(/(<\/?(?:font|b|i|u|p|br)[^>]*>|\[pagebreak\])/i)
+		.filter((part) => part !== '');
+	const root = document.createDocumentFragment();
+	const stack = [{ node: root, align: '' }];
+
+	const current = () => stack[stack.length - 1];
+
+	for (const token of tokens) {
+		if (/^\[pagebreak\]$/i.test(token)) {
+			const divider = document.createElement('div');
+			divider.className = 'book-pagebreak';
+			current().node.append(divider);
+			continue;
+		}
+	if (/^<img\b/i.test(token)) {
+			const source = (token.match(/src\s*=\s*['"]([^'"]+)/i) || [])[1] || '';
+			const image = document.createElement('img');
+			image.className = 'book-inline-img';
+			image.alt = '';
+			const mapped = bookImageSource(source);
+			if (mapped) {
+				image.src = mapped;
+				if (/illuminated_letters/i.test(source)) image.classList.add('letter');
+				else image.classList.add('art');
+			} else image.classList.add('book-inline-img-missing');
+			current().node.append(image);
+			continue;
+		}
+
+		const match = token.match(/^<(\/?)(font|b|i|u|p|br)([^>]*)>$/i);
+		if (!match) {
+			// 普通文字：按段落切开
+			const pieces = token.split('\n');
+			pieces.forEach((piece, index) => {
+				if (index > 0) {
+					const top = current();
+					top.node.append(document.createElement('br'));
+				}
+				if (piece) {
+					const textNode = document.createTextNode(piece);
+					current().node.append(textNode);
+				}
+			});
+			continue;
+		}
+
+		const closing = match[1] === '/';
+		const tag = match[2].toLowerCase();
+		const attrs = match[3] || '';
+
+		if (tag === 'br') {
+			current().node.append(document.createElement('br'));
+			continue;
+		}
+
+		if (tag === 'b' || tag === 'i' || tag === 'u') {
+			if (closing) {
+				if (stack.length > 1) stack.pop();
+				continue;
+			}
+			const element = document.createElement('strong');
+			element.className = 'book-' + tag;
+			current().node.append(element);
+			stack.push({ node: element, align: current().align });
+			continue;
+		}
+
+		if (tag === 'p') {
+			if (closing) {
+				if (stack.length > 1) stack.pop();
+				continue;
+			}
+			const element = document.createElement('div');
+			element.className = 'book-p';
+			const align = (attrs.match(/align\s*=\s*['"]?(\w+)/i) || [])[1];
+			if (align) element.style.textAlign = align;
+			current().node.append(element);
+			stack.push({ node: element, align: align || '' });
+			continue;
+		}
+
+		if (tag === 'font') {
+			if (closing) {
+				if (stack.length > 1) stack.pop();
+				continue;
+			}
+			const face = (attrs.match(/face\s*=\s*['"]([^'"]+)/i) || [])[1] || '';
+			const size = Number((attrs.match(/size\s*=\s*['"]?(\d+)/i) || [])[1]) || 0;
+			const element = document.createElement('span');
+			const fontClass = bookFontClass(face);
+			if (fontClass) element.className = 'book-font ' + fontClass;
+			if (size) element.style.fontSize = (size / 23).toFixed(3) + 'em';
+			current().node.append(element);
+			stack.push({ node: element, align: current().align });
+			continue;
+		}
 	}
-	detailEl.append(table);
+
+	return root;
+}
+
+function renderBook(entry, section) {
+	section('书页');
+	const text = entry.text || '';
+	const handwritten = /日记|日志|便条|信|note|journal|letter|diary/i.test(entry.name || entry.edid || '');
+	const panel = el('div', 'book-panel' + (handwritten ? ' book-hand' : ''));
+	const page = el('div', 'book-page');
+	page.append(el('h3', 'book-title', entry.name || '（无名书）'));
+
+	const body = el('div', 'book-body');
+	if (!text.trim()) {
+		body.append(el('div', 'dim', '这本书没有正文。'));
+	} else {
+		body.append(renderBookText(text));
+	}
+	page.append(body);
+	panel.append(page);
+	detailEl.append(panel);
+
+	const raw = document.createElement('details');
+	raw.className = 'book-raw';
+	const summary = document.createElement('summary');
+	summary.textContent = '原始文本（带游戏标记）';
+	raw.append(summary);
+	const pre = el('div', 'longtext raw', entry.rawText || text);
+	raw.append(pre);
+	detailEl.append(raw);
 }
 
 function renderRecipe(entry, section) {
 	const data = entry.data;
 	section('配方');
-	detailEl.append(
-		statsTable([
-			['做成', refName(entry, data.created)],
-			['数量', data.count],
-			['工作台', refName(entry, data.workbench)]
-		])
-	);
-	const ingredients = (data.ingredients || []).filter((i) => i.item);
+	detailEl.append(statsTable([['做成', refName(entry, data.created)], ['数量', data.count], ['工作台', refName(entry, data.workbench)]]));
+	const ingredients = (data.ingredients || []).filter((item) => item.item);
 	if (ingredients.length) {
 		const table = el('table', 'stats');
 		for (const item of ingredients) {
@@ -1505,23 +1967,37 @@ function renderPlace(entry, section) {
 function renderPerk(entry, section) {
 	const data = entry.data;
 	section('天赋');
-	detailEl.append(
-		statsTable([
-			['等级数', data.rankCount],
-			['下一级', data.next ? refName(entry, data.next) : ''],
-			['前置', data.parent ? refName(entry, data.parent) : '']
-		])
-	);
+	detailEl.append(statsTable([['等级数', data.rankCount], ['下一级', data.next ? refName(entry, data.next) : ''], ['前置', data.parent ? refName(entry, data.parent) : '']]));
 }
 
 function renderSpell(entry, section) {
 	section('法术');
 	detailEl.append(statsTable([['耗魔', entry.data.cost]]));
+	const commands = el('div', 'chips');
+	if (entry.type === 'spell') {
+		for (const [label, command] of [
+			['复制 player.addspell', `player.addspell ${entry.hex}`],
+			['复制 player.removespell', `player.removespell ${entry.hex}`]
+		]) {
+			const chip = el('span', 'chip', label);
+			chip.title = command;
+			chip.onclick = () => {
+				navigator.clipboard?.writeText(command);
+				const old = chip.textContent;
+				chip.textContent = command;
+				setTimeout(() => (chip.textContent = old), 1200);
+			};
+			commands.append(chip);
+		}
+	} else {
+		commands.append(el('span', 'chip plain', '龙吼不能用 addspell，要在游戏里念'));
+	}
+	detailEl.append(commands);
 	renderEffects(entry, section);
 }
 
 function renderLeveled(entry, section) {
-	const entries = (entry.data.entries || []).filter((e) => e.item);
+	const entries = (entry.data.entries || []).filter((item) => item.item);
 	if (!entries.length) return;
 	section('条目');
 	const table = el('table', 'stats');
@@ -1532,16 +2008,16 @@ function renderLeveled(entry, section) {
 		link.onclick = () => openEntry(item.item);
 		cell.append(link);
 		tr.append(cell);
-		tr.append(el('td', 'k', `等级 ${item.level}${item.count > 1 ? ` ×${item.count}` : ''}`));
+		tr.append(el('td', 'k', `等级 ${item.level}${item.count > 1 ? ' ×' + item.count : ''}`));
 		table.append(tr);
 	}
 	detailEl.append(table);
 }
 
-const HIDE_REL = new Set(['keyword', 'world', 'parent', 'next']);
+const HIDE_REL = new Set(['keyword', 'world', 'parent', 'next', 'nextQuest', 'aliasQuest']);
 
 function renderLinks(entry, section) {
-	const links = (entry.links || []).filter((l) => !HIDE_REL.has(l.rel) && l.rel !== 'effect');
+	const links = (entry.links || []).filter((link) => !HIDE_REL.has(link.rel) && link.rel !== 'effect');
 	if (!links.length) return;
 	const groups = new Map();
 	for (const link of links) {
@@ -1567,7 +2043,7 @@ function renderLinks(entry, section) {
 }
 
 function renderBacklinks(entry, section) {
-	const links = (entry.backlinks || []).filter((l) => l.rel !== 'keyword');
+	const links = (entry.backlinks || []).filter((link) => link.rel !== 'keyword' && link.rel !== 'aliasQuest');
 	if (!links.length) return;
 	section('谁引用了它');
 	const groups = new Map();
@@ -1604,7 +2080,9 @@ function relLabel(rel) {
 		keyword: '同一关键词',
 		teaches: '出自',
 		next: '进阶到',
-		parent: '下级'
+		parent: '下级',
+		nextQuest: '任务链',
+		aliasQuest: '别名引用'
 	};
 	return map[rel] || rel;
 }
@@ -1632,7 +2110,88 @@ function renderPlacements(entry, section) {
 	if (placements.length > 80) detailEl.append(el('div', 'dim', `…还有 ${placements.length - 80} 处`));
 }
 
+function renderChain(chain, entry, box) {
+	box.textContent = '';
+	const nodes = new Map(chain.nodes.map((node) => [node.formid, node]));
+	const nextOf = new Map();
+	const prevOf = new Map();
+	const aliasOf = new Map();
+	const push = (map, key, value) => {
+		const list = map.get(key) || [];
+		list.push(value);
+		map.set(key, list);
+	};
+
+	for (const edge of chain.edges) {
+		if (edge.rel === 'next') push(nextOf, edge.from, edge.to);
+		else if (edge.rel === 'prev') push(prevOf, edge.to, edge.from);
+		else if (edge.rel === 'alias') {
+			push(aliasOf, edge.from, edge.to);
+			push(aliasOf, edge.to, edge.from);
+		}
+	}
+
+	const line = (node, indent, cls) => {
+		const wrap = el('div', 'chain-line ' + (cls || ''));
+		wrap.style.paddingLeft = indent * 18 + 'px';
+		const link = el('span', 'link', node.name || node.edid || node.hex);
+		link.append(el('span', 't', ' ' + node.hex));
+		link.onclick = () => openEntry(node.formid);
+		wrap.append(link);
+		box.append(wrap);
+	};
+
+	const walk = (formid, direction, depth, seen) => {
+		if (depth > 3) return;
+		const map = direction === 'next' ? nextOf : prevOf;
+		for (const other of map.get(formid) || []) {
+			if (seen.has(other)) continue;
+			seen.add(other);
+			const node = nodes.get(other);
+			if (!node) continue;
+			line(node, depth, direction);
+			walk(other, direction, depth + 1, seen);
+		}
+	};
+
+	const root = nodes.get(entry.formid);
+	box.append(el('div', 'dim', '本任务'));
+	if (root) line(root, 0, 'root');
+
+	const before = prevOf.get(entry.formid) || [];
+	const after = nextOf.get(entry.formid) || [];
+	box.append(el('div', 'dim', '前置任务'));
+	if (!before.length) box.append(el('div', 'dim chain-empty', '没有记录在案的前置任务'));
+	else walk(entry.formid, 'prev', 0, new Set([entry.formid]));
+	box.append(el('div', 'dim', '后续任务'));
+	if (!after.length) box.append(el('div', 'dim chain-empty', '没有记录在案的后续任务'));
+	else walk(entry.formid, 'next', 0, new Set([entry.formid]));
+
+	const aliases = (aliasOf.get(entry.formid) || []).filter((id) => id !== entry.formid);
+	if (aliases.length) {
+		box.append(el('div', 'dim', '别名引用（从别的任务复制别名）'));
+		for (const id of aliases) {
+			const node = nodes.get(id);
+			if (node) line(node, 0, 'alias');
+		}
+	}
+	if (!before.length && !after.length && !aliases.length) {
+		box.append(el('div', 'dim chain-empty', '这条任务在记录里没有前后任务，也没有别名引用。'));
+	}
+}
+
+// If anything at all breaks, say so on the page instead of leaving it blank.
+window.addEventListener('error', (event) => {
+	const sub = document.getElementById('subtitle');
+	if (sub) sub.textContent = '脚本出错：' + (event.message || '未知错误');
+});
+window.addEventListener('unhandledrejection', (event) => {
+	const sub = document.getElementById('subtitle');
+	if (sub) sub.textContent = '请求出错：' + (event.reason && event.reason.message ? event.reason.message : String(event.reason));
+});
+
 boot().catch((err) => {
-	$('subtitle').textContent = '出错了：' + err.message;
+	const sub = document.getElementById('subtitle');
+	if (sub) sub.textContent = '出错了：' + err.message;
 	console.error(err);
 });

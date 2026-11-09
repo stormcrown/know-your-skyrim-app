@@ -238,9 +238,19 @@ export function readQuestProgress(saveFile, questStages) {
 
 		const previous = found.get(quest.formid);
 		if (!previous || stages.length > previous.stages.length) {
+			const walked = new Set(stages.filter((stage) => stage.done).map((stage) => stage.stage));
+			// The record says which stages complete the quest; the save says which stages were walked.
+			let state = 'active';
+			for (const complete of quest.complete || []) {
+				if (walked.has(complete)) {
+					state = 'done';
+					break;
+				}
+			}
 			found.set(quest.formid, {
 				formid: quest.formid,
 				name: quest.name,
+				state,
 				changeFlags,
 				version,
 				compressed: unpacked !== 0,
@@ -255,6 +265,8 @@ export function readQuestProgress(saveFile, questStages) {
 		parsedAt: Date.now(),
 		formVersion: parsed.formVersion,
 		pluginCount: parsed.plugins.length + parsed.lightPlugins.length,
+		pluginFullCount: parsed.plugins.length,
+		pluginLightCount: parsed.lightPlugins.length,
 		header: parsed.header,
 		quests: [...found.values()].map((quest) => ({
 			...quest,

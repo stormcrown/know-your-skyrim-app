@@ -15,7 +15,12 @@ const DEFAULTS = {
 	profile: '',
 	language: 'chinese',
 	saveFile: '',
-	port: 4820
+	port: 4820,
+	// 书籍阅读页的排版：留空就用系统默认，手写体和花体可以单独指定
+	bookBodyFont: '',
+	bookHandFont: '',
+	bookTitleFont: '',
+	bookFontSize: 18
 };
 
 export function loadConfig() {

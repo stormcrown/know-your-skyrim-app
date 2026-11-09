@@ -24,7 +24,8 @@ export function createSchema(db) {
 			source TEXT,
 			masters TEXT,
 			light INTEGER,
-			entries INTEGER DEFAULT 0
+			entries INTEGER DEFAULT 0,
+			error TEXT DEFAULT ''
 		);
 
 		CREATE TABLE IF NOT EXISTS entries (
@@ -80,6 +81,7 @@ export function createSaveTables(db) {
 			current_stage INTEGER,
 			done_stages INTEGER DEFAULT 0,
 			stage_count INTEGER DEFAULT 0,
+			state TEXT NOT NULL DEFAULT '',
 			stages TEXT NOT NULL DEFAULT '[]'
 		);
 	`);

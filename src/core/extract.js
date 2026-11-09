@@ -3,6 +3,7 @@
 
 import { hiddenReason } from './unseen.js';
 import { classify } from './subclass.js';
+import { parseCondition } from './conditions.js';
 
 const ITEM_SIGS = new Set(['WEAP', 'ARMO', 'ALCH', 'INGR', 'BOOK', 'MISC', 'KEYM', 'AMMO', 'SLGM', 'SCRL']);
 
@@ -146,6 +147,10 @@ export class Extractor {
 			if (data.parent) this.onLink(entry.formid, data.parent, 'parent');
 		}
 		if (entry.type === 'cell' && data.world) this.onLink(entry.formid, data.world, 'world');
+		if (entry.type === 'quest') {
+			for (const next of data.nextAll || []) if (next) this.onLink(entry.formid, next, 'nextQuest');
+			for (const other of data.aliasQuests || []) if (other) this.onLink(entry.formid, other, 'aliasQuest');
+		}
 		if (entry.type === 'container') {
 			for (const item of data.items || []) this.onLink(entry.formid, item.item, 'contains');
 		}
@@ -210,33 +215,71 @@ export class Extractor {
 				const objectives = [];
 				let current = null;
 				let pendingObjective = null;
+				let pendingLogFlags = 0;
+				let inObjective = false;
+				let inAlias = false;
+				const nextQuests = [];
+				const recordConditions = [];
+				const aliasQuests = [];
 				for (const { sig: fieldSig, data } of f.order) {
 					if (fieldSig === 'INDX' && data.length >= 2) {
 						current = {
 							index: data.readUInt16LE(0),
 							flags: data.length >= 3 ? data[2] : 0,
 							log: '',
+							complete: false,
+							fail: false,
 							objectives: []
 						};
 						stages.push(current);
+						pendingLogFlags = 0;
+						inObjective = false;
+						inAlias = false;
+					} else if (fieldSig === 'QSDT' && current) {
+						// 0x01 = this stage completes the quest, 0x02 = it fails it
+						pendingLogFlags = data.length >= 1 ? data[0] : 0;
+						if (pendingLogFlags & 0x01) current.complete = true;
+						if (pendingLogFlags & 0x02) current.fail = true;
+					} else if (fieldSig === 'NAM0' && data.length >= 4) {
+						const next = this.globalId(data.readUInt32LE(0));
+						if (next) {
+							nextQuests.push(next);
+							this.pendingNext = next;
+						}
 					} else if (fieldSig === 'CNAM' && current) {
 						current.log = this.text(data, 'DLSTRINGS');
 					} else if (fieldSig === 'QOBJ' && data.length >= 2) {
+						inObjective = true;
 						pendingObjective = {
 							index: data.readUInt16LE(0),
 							flags: data.length >= 4 ? data.readUInt16LE(2) : 0,
-							text: ''
+							text: '',
+							conditions: []
 						};
 						objectives.push(pendingObjective);
 						if (current) current.objectives.push(pendingObjective);
 					} else if (fieldSig === 'NNAM' && pendingObjective) {
 						pendingObjective.text = this.text(data, 'DLSTRINGS');
-					} else if (fieldSig === 'FNAM' && pendingObjective && data.length >= 2) {
-						pendingObjective.flags = data.readUInt16LE(0);
+					} else if (fieldSig === 'ALST' || fieldSig === 'ALLS') {
+						inAlias = true;
+						inObjective = false;
+					} else if (fieldSig === 'ALEQ' && data.length >= 4) {
+						const referenced = this.globalId(data.readUInt32LE(0));
+						if (referenced) aliasQuests.push(referenced);
+					} else if (fieldSig === 'CTDA') {
+						const condition = parseCondition(data, (formId) => this.globalId(formId));
+						if (condition) {
+							if (inObjective && pendingObjective) pendingObjective.conditions.push(condition);
+							else if (current && !inAlias) (current.conditions || (current.conditions = [])).push(condition);
+							else recordConditions.push(condition);
+						}
 					}
 				}
 				const dnam = f.get('DNAM');
 				const questFlags = dnam && dnam.length >= 2 ? dnam.readUInt16LE(0) : 0;
+				// Offset 8 of DNAM is the quest type the journal groups it under.
+				const questType = dnam && dnam.length >= 12 ? dnam.readUInt32LE(8) : 0;
+				if (nextQuests.length) this.nextQuests = nextQuests;
 				return {
 					type: 'quest',
 					...base,
@@ -245,6 +288,12 @@ export class Extractor {
 						stages,
 						objectives,
 						flags: questFlags,
+						questType,
+						conditions: recordConditions,
+						aliasQuests,
+						next: nextQuests[0] || 0,
+						nextAll: nextQuests,
+						completeStages: stages.filter((stage) => stage.complete).map((stage) => stage.index),
 						keywords: this.keywords(f)
 					}
 				};
@@ -403,6 +452,12 @@ export class Extractor {
 						kind: /Trainer/i.test(classEdid) ? '训练师' : /Vendor/i.test(classEdid) ? '商人' : ''
 					}
 				};
+			}
+
+			case 'GLOB': {
+				// A global has no name field of its own: its editor id is the name, and FNAM holds the number.
+				const fnam = f.get('FNAM');
+				return { type: 'global', ...base, name: base.edid || base.name, text: '', data: { value: fnam && fnam.length >= 4 ? fnam.readFloatLE(0) : 0 } };
 			}
 
 			case 'RACE': {

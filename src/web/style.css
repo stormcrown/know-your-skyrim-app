@@ -814,22 +814,58 @@ table.stats td.v {
 	font-size: 12px;
 }
 
-.settings {
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.45);
-	display: flex;
-	justify-content: flex-end;
-	z-index: 50;
-}
+/* the config page: an ordinary page, not an overlay */
 .settings-card {
-	width: min(460px, 100%);
-	height: 100%;
-	overflow-y: auto;
+	display: block;
+	width: 100%;
+	max-width: 720px;
 	background: var(--panel);
-	border-left: 1px solid var(--line);
-	padding: 18px 20px 40px;
-	box-shadow: var(--shadow);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	padding: 18px 20px 24px;
+	margin: 10px 0 30px;
+}
+
+/* full-page tabs (系统 / 配置) drop the list and let the detail take the room */
+body.wide-page main {
+	grid-template-columns: 1fr;
+}
+body.wide-page .list-pane {
+	display: none;
+}
+body.wide-page .detail-pane {
+	border-left: none;
+}
+
+/* collapsible system sections */
+details.sys-section {
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	margin: 8px 0;
+	background: var(--panel);
+}
+details.sys-section > summary {
+	cursor: pointer;
+	padding: 8px 12px;
+	font-size: 13px;
+	color: var(--gold);
+	list-style: none;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+details.sys-section > summary::-webkit-details-marker {
+	display: none;
+}
+details.sys-section > summary::before {
+	content: '▸';
+	color: var(--muted);
+}
+details.sys-section[open] > summary::before {
+	content: '▾';
+}
+details.sys-section > *:not(summary) {
+	padding: 0 12px 10px;
 }
 .settings-head {
 	display: flex;
@@ -1050,4 +1086,271 @@ table.quest-stages {
 	padding: 2px 0;
 	border-bottom: 1px solid var(--line);
 	font-size: 13px;
+}
+
+table.stats th {
+	text-align: left;
+	color: var(--muted);
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	font-weight: 600;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--line);
+}
+.check {
+	border: 1px solid var(--line);
+	border-radius: 3px;
+	padding: 8px 10px;
+	margin: 6px 0;
+	background: var(--panel);
+}
+.check-error {
+	border-left: 3px solid var(--red);
+}
+.check-warn {
+	border-left: 3px solid var(--gold);
+}
+.check-info {
+	border-left: 3px solid var(--muted);
+}
+.check-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	margin-bottom: 4px;
+}
+.check-level {
+	font-size: 11px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 0 6px;
+	color: var(--muted);
+}
+.check-error .check-level {
+	color: var(--red);
+	border-color: var(--red);
+}
+.check-warn .check-level {
+	color: var(--gold);
+	border-color: var(--gold-dim);
+}
+.check-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin-top: 6px;
+}
+.quest-chain {
+	margin-top: 8px;
+}
+
+
+/* ---------- 书页：按游戏里那页纸的样子排 ---------- */
+.book-panel {
+	position: relative;
+	max-width: 720px;
+	margin: 12px 0 10px;
+	padding: 30px 38px 34px;
+	color: #2b2118;
+	background:
+		radial-gradient(ellipse at 50% -10%, rgba(255, 255, 255, 0.5), transparent 62%),
+		linear-gradient(180deg, #f7eeda 0%, #f1e3c6 55%, #e9d9b6 100%);
+	border: 1px solid #c9b389;
+	border-radius: 3px;
+	box-shadow:
+		inset 0 0 46px rgba(122, 92, 42, 0.16),
+		inset 0 0 2px rgba(255, 255, 255, 0.7),
+		0 3px 12px rgba(0, 0, 0, 0.28);
+	font-family: var(--book-body-font, Georgia, 'Songti SC', SimSun, serif);
+	font-size: var(--book-font-size, 18px);
+	line-height: 1.88;
+}
+
+/* 左边缘那道装订的阴影 */
+.book-panel::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: 22px;
+	background: linear-gradient(90deg, rgba(110, 80, 35, 0.22), rgba(110, 80, 35, 0));
+	pointer-events: none;
+}
+
+.book-title {
+	margin: 0 0 1.1em;
+	text-align: center;
+	font-family: var(--book-title-font, var(--book-body-font, Georgia, serif));
+	font-size: 1.34em;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	color: #3a2a17;
+}
+
+.book-body .book-p {
+	margin: 0 0 0.85em;
+	text-align: justify;
+	text-indent: 2em;
+	white-space: pre-wrap;
+}
+
+.book-body .book-p:last-child {
+	margin-bottom: 0;
+}
+
+.book-body .book-p:first-child {
+	text-indent: 0;
+}
+
+.book-drop {
+	float: left;
+	margin: 0.08em 0.14em 0 0;
+	padding: 0;
+	font-family: var(--book-hand-font, var(--book-body-font, Georgia, serif));
+	font-size: 3.15em;
+	line-height: 0.84;
+	color: #5b3d1f;
+	text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+body.no-dropcap .book-drop {
+	float: none;
+	font-size: inherit;
+	line-height: inherit;
+	margin: 0;
+	color: inherit;
+	text-shadow: none;
+}
+
+.book-hand {
+	font-family: var(--book-hand-font, var(--book-body-font, Georgia, serif));
+}
+
+.book-raw {
+	margin: 6px 0 26px;
+	max-width: 720px;
+}
+
+.book-raw > summary {
+	cursor: pointer;
+	color: var(--muted);
+	font-size: 12px;
+}
+
+.book-raw .longtext {
+	max-height: 320px;
+	overflow: auto;
+	margin-top: 6px;
+}
+
+/* 配置页里的试字区 */
+.book-preview {
+	max-width: 520px;
+	margin: 8px 0 4px;
+	padding: 16px 20px;
+	color: #2b2118;
+	background: linear-gradient(180deg, #f7eeda, #ecdcbd);
+	border: 1px solid #c9b389;
+	border-radius: 3px;
+	font-family: var(--book-body-font, Georgia, serif);
+	font-size: var(--book-font-size, 18px);
+	line-height: 1.8;
+}
+
+.book-preview-title {
+	text-align: center;
+	font-family: var(--book-title-font, var(--book-body-font, Georgia, serif));
+	font-weight: 600;
+	margin-bottom: 0.6em;
+}
+
+.book-preview p {
+	margin: 0;
+	text-align: justify;
+}
+
+.book-preview .book-drop {
+	font-size: 2.8em;
+}
+
+.settings-title {
+	margin: 18px 0 8px;
+	font-size: 13px;
+	color: var(--gold);
+	font-weight: 600;
+}
+
+.field.inline {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-direction: row;
+}
+
+/* 书里自带的三种字体：手写、印刷、法师手稿 */
+.book-font.hw {
+	font-family: var(--book-hand-font, var(--book-body-font, Georgia, serif));
+}
+.book-font.printed {
+	font-family: var(--book-body-font, Georgia, serif);
+}
+.book-font.mage {
+	font-family: var(--book-hand-font, var(--book-body-font, Georgia, serif));
+	font-style: italic;
+}
+.book-font.books {
+	font-family: var(--book-title-font, var(--book-body-font, Georgia, serif));
+	letter-spacing: 0.02em;
+}
+.book-b {
+	font-weight: 700;
+}
+.book-i {
+	font-style: italic;
+}
+.book-u {
+	text-decoration: underline;
+}
+.book-body .book-p {
+	display: block;
+}
+
+/* 翻页记号：一条细线加一个小菱形 */
+.book-pagebreak {
+	height: 1px;
+	margin: 18px auto;
+	max-width: 60%;
+	background: linear-gradient(90deg, transparent, rgba(120, 88, 40, 0.55), transparent);
+	position: relative;
+}
+.book-pagebreak::after {
+	content: '❖';
+	position: absolute;
+	left: 50%;
+	top: -9px;
+	transform: translateX(-50%);
+	background: inherit;
+	padding: 0 6px;
+	color: rgba(120, 88, 40, 0.75);
+	font-size: 11px;
+	background: #f1e3c6;
+}
+
+/* 书里的插图：首字母那种花体浮动在段首，其他插图居中 */
+.book-inline-img.letter {
+	float: left;
+	height: 2.9em;
+	width: auto;
+	margin: 0.12em 0.22em 0 0;
+}
+.book-inline-img.art {
+	display: block;
+	max-width: 100%;
+	max-height: 420px;
+	margin: 12px auto;
+}
+.book-inline-img-missing {
+	display: none;
 }

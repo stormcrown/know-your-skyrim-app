@@ -1,5 +1,7 @@
 // Reads the index. Everything the web UI asks for ends up here.
 
+import { conditionWords } from './conditions.js';
+
 const TYPE_FAMILIES = {
 	item: 'item',
 	actor: 'actor',
@@ -64,7 +66,7 @@ function like(value) {
 
 export function search(
 	db,
-	{ q = '', types = [], sigs = [], plugin = '', limit = 100, offset = 0, sort = 'name', hideInternal = true, hideNoJournal = false, met = '', kind = '', part = '', tags = [], radiant = '', journal = '', effect = '', magnitude = null, flags = [], keyword = '', sortDir = 'asc' } = {}
+	{ q = '', types = [], sigs = [], plugin = '', limit = 100, offset = 0, sort = 'name', hideInternal = true, hideNoJournal = false, met = '', kind = '', part = '', tags = [], radiant = '', journal = '', effect = '', magnitude = null, flags = [], keyword = '', questState = '', objectives = '', sortDir = 'asc' } = {}
 ) {
 	const where = [];
 	const params = [];
@@ -166,6 +168,15 @@ export function search(
 	if (radiant === '1') where.push('e.radiant = 1');
 	else if (radiant === '0') where.push('e.radiant = 0');
 
+	if (objectives === '1') where.push("json_array_length(json_extract(e.data, '$.objectives')) > 0");
+	else if (objectives === '0') where.push("COALESCE(json_array_length(json_extract(e.data, '$.objectives')), 0) = 0");
+	// The three states a quest has in a save: never taken, running, finished.
+	if (questState === 'none') {
+		where.push("e.type = 'quest' AND NOT EXISTS (SELECT 1 FROM save_progress sp WHERE sp.quest = e.formid)");
+	} else if (questState === 'active' || questState === 'done') {
+		where.push("e.type = 'quest' AND EXISTS (SELECT 1 FROM save_progress sp WHERE sp.quest = e.formid AND sp.state = ?)");
+		params.push(questState);
+	}
 	if (met === 'met') {
 		where.push("e.type = 'quest' AND EXISTS (SELECT 1 FROM save_progress sp WHERE sp.quest = e.formid)");
 	} else if (met === 'unmet') {
@@ -200,6 +211,8 @@ export function search(
 		radiant: 'e.radiant',
 		journal: 'e.journal',
 		met: 'EXISTS (SELECT 1 FROM save_progress sp WHERE sp.quest = e.formid)',
+		questState: '(SELECT CASE state WHEN \'done\' THEN 2 WHEN \'active\' THEN 1 ELSE 0 END FROM save_progress sp WHERE sp.quest = e.formid)',
+		objectives: "json_array_length(json_extract(e.data, '$.objectives'))",
 		race: "(SELECT r.name FROM entries r WHERE r.formid = CAST(json_extract(e.data, '$.race') AS INTEGER)) COLLATE NOCASE",
 		enchantment: "(SELECT m.name FROM entries m WHERE m.formid = CAST(json_extract(e.data, '$.enchantment') AS INTEGER)) COLLATE NOCASE",
 		plugin: 'p.name COLLATE NOCASE'
@@ -208,7 +221,7 @@ export function search(
 	const orderSql = `ORDER BY (e.name = '') ASC, ${SORT_FIELDS[sort] || SORT_FIELDS.name} ${direction}`;
 
 	const rows = db
-		.prepare(`SELECT e.formid, e.sig, e.type, e.name, e.edid, e.plugin, e.data, e.internal, e.hidden_reason, e.journal, e.kind, e.part, e.radiant, e.effects, EXISTS (SELECT 1 FROM save_progress sp WHERE sp.quest = e.formid) AS met, p.name AS pluginName,
+		.prepare(`SELECT e.formid, e.sig, e.type, e.name, e.edid, e.plugin, e.data, e.internal, e.hidden_reason, e.journal, e.kind, e.part, e.radiant, e.effects, EXISTS (SELECT 1 FROM save_progress sp WHERE sp.quest = e.formid) AS met, (SELECT sp.state FROM save_progress sp WHERE sp.quest = e.formid) AS questState, p.name AS pluginName,
 			(SELECT m.name FROM entries m WHERE m.formid = CAST(json_extract(e.data, '$.enchantment') AS INTEGER)) AS enchantName,
 			(SELECT r.name FROM entries r WHERE r.formid = CAST(json_extract(e.data, '$.race') AS INTEGER)) AS raceName,
 			(SELECT m.name FROM links l JOIN entries m ON m.formid = l.dst WHERE l.src = e.formid AND l.rel = 'effect' LIMIT 1) AS firstEffect
@@ -243,6 +256,7 @@ export function search(
 			enchantName: row.enchantName || '',
 			effects: row.effects || '',
 			met: Boolean(row.met),
+			questState: row.questState || '',
 			data: safeJson(row.data)
 		}))
 	};
@@ -318,11 +332,12 @@ export function getEntry(db, formid, hex) {
 		placements
 	};
 	base.refs = resolveRefs(db, base.data, [...out, ...incoming]);
+	attachConditionText(base, base.refs);
 
 	// What the picked save says about this entry, when there is anything to say.
 	if (base.type === 'quest') {
 		const progress = db
-			.prepare('SELECT current_stage, done_stages, stage_count, stages FROM save_progress WHERE quest = ?')
+			.prepare('SELECT current_stage, done_stages, stage_count, state, stages FROM save_progress WHERE quest = ?')
 			.get(base.formid);
 		base.met = Boolean(progress);
 		if (progress) {
@@ -336,6 +351,7 @@ export function getEntry(db, formid, hex) {
 				currentStage: progress.current_stage,
 				doneStages: progress.done_stages,
 				stageCount: progress.stage_count,
+				state: progress.state,
 				stages
 			};
 		}
@@ -354,6 +370,9 @@ function resolveRefs(db, data, links) {
 	const ids = new Set();
 	for (const [key, value] of Object.entries(data || {})) {
 		if (SINGLE_REFS.has(key) && typeof value === 'number' && value > 0) ids.add(value);
+		if (key === 'conditions' && Array.isArray(value)) {
+			for (const condition of value) collectConditionIds(condition, ids);
+		}
 		if (ARRAY_REFS.has(key) && Array.isArray(value)) {
 			for (const item of value) {
 				if (typeof item === 'number' && item > 0) ids.add(item);
@@ -365,6 +384,8 @@ function resolveRefs(db, data, links) {
 			}
 		}
 	}
+	for (const stage of data?.stages || []) for (const condition of stage.conditions || []) collectConditionIds(condition, ids);
+	for (const objective of data?.objectives || []) for (const condition of objective.conditions || []) collectConditionIds(condition, ids);
 	for (const link of links || []) ids.add(link.formid);
 	ids.delete(0);
 	if (!ids.size) return {};
@@ -375,6 +396,31 @@ function resolveRefs(db, data, links) {
 		refs[String(row.formid)] = { hex: hexId(row.formid), name: row.name, type: row.type, sig: row.sig, edid: row.edid };
 	}
 	return refs;
+}
+
+function collectConditionIds(condition, ids) {
+	if (!condition) return;
+	for (const key of ['globalValue', 'reference']) if (condition[key]) ids.add(condition[key]);
+	for (const key of ['param1', 'param2', 'param3']) {
+		if (condition[key] && condition[key + 'IsForm']) ids.add(condition[key]);
+	}
+}
+
+// Every condition gets its sentence in the same shape the wiki describes: <run on>.Function(args) <op> value
+function attachConditionText(base, refs) {
+	if (base.type !== 'quest') return;
+	const resolve = (formid) => {
+		if (formid === 0x14) return '玩家';
+		const ref = refs[String(formid)];
+		return ref ? ref.name || ref.edid || ref.hex : hexId(formid);
+	};
+	for (const condition of base.data.conditions || []) condition.text = conditionWords(condition, resolve);
+	for (const stage of base.data.stages || []) {
+		for (const condition of stage.conditions || []) condition.text = conditionWords(condition, resolve);
+	}
+	for (const objective of base.data.objectives || []) {
+		for (const condition of objective.conditions || []) condition.text = conditionWords(condition, resolve);
+	}
 }
 
 export function plugins(db) {

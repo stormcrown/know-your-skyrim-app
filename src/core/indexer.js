@@ -28,7 +28,7 @@ export function buildIndex({ loadOrder, dbFile, onProgress = () => {}, only = nu
 	const db = openIndex(dbFile);
 	createSchema(db);
 
-	const insertPlugin = db.prepare('INSERT OR REPLACE INTO plugins (idx, name, source, masters, light) VALUES (?, ?, ?, ?, ?)');
+	const insertPlugin = db.prepare('INSERT OR REPLACE INTO plugins (idx, name, source, masters, light, error) VALUES (?, ?, ?, ?, ?, ?)');
 	// A later plugin overrides a record; when its override has no name or text of its own (plenty do) the words
 	// the earlier plugin gave stay, so the Chinese name of a Skyrim item survives an English patch of its numbers.
 	const insertEntry = db.prepare(
@@ -129,7 +129,7 @@ export function buildIndex({ loadOrder, dbFile, onProgress = () => {}, only = nu
 		db.exec('BEGIN');
 		let recordErrors = 0;
 		try {
-			insertPlugin.run(plugin.position, plugin.name, plugin.source, plugin.masters.join('|'), plugin.light ? 1 : 0);
+			insertPlugin.run(plugin.position, plugin.name, plugin.source, plugin.masters.join('|'), plugin.light ? 1 : 0, plugin.error || '');
 
 			walkRecords(buffer, header.bodyStart, buffer.length, {}, (record) => {
 				// A cheap guard: only hand over the signatures that have an extractor.
@@ -148,7 +148,15 @@ export function buildIndex({ loadOrder, dbFile, onProgress = () => {}, only = nu
 			db.exec('COMMIT');
 		} catch (err) {
 			db.exec('ROLLBACK');
+			plugin.error = err.message;
 			onProgress({ phase: 'plugin', index: i, total: plugins.length, name: plugin.name, error: err.message });
+			try {
+				db.exec('BEGIN');
+				insertPlugin.run(plugin.position, plugin.name, plugin.source, plugin.masters.join('|'), plugin.light ? 1 : 0, '整份解析失败：' + err.message);
+				db.exec('COMMIT');
+			} catch {
+				db.exec('ROLLBACK');
+			}
 			continue;
 		}
 
@@ -296,6 +304,10 @@ export function buildIndex({ loadOrder, dbFile, onProgress = () => {}, only = nu
 		pluginCount: loadOrder.plugins.length,
 		entryCount: finalCount,
 		modCount: loadOrder.modCount || 0,
+		fullPlugins: loadOrder.plugins.filter((plugin) => !plugin.light).length,
+		lightPlugins: loadOrder.plugins.filter((plugin) => plugin.light).length,
+		duplicates: JSON.stringify(loadOrder.duplicates || []),
+		allPlugins: (loadOrder.allPlugins || []).join('|'),
 		buildMs: Date.now() - started
 	});
 
@@ -309,6 +321,6 @@ export function buildIndex({ loadOrder, dbFile, onProgress = () => {}, only = nu
 const KNOWN_SIGS = new Set([
 	'WEAP', 'ARMO', 'ALCH', 'INGR', 'BOOK', 'MISC', 'KEYM', 'AMMO', 'SLGM', 'SCRL',
 	'NPC_', 'QUST', 'LCTN', 'WRLD', 'CELL', 'PERK', 'SPEL', 'SHOU', 'MGEF', 'ENCH',
-	'FACT', 'COBJ', 'KYWD', 'LVLI', 'LVLN', 'CONT', 'REFR', 'ACHR', 'CLAS', 'RACE'
+	'FACT', 'COBJ', 'KYWD', 'LVLI', 'LVLN', 'CONT', 'REFR', 'ACHR', 'CLAS', 'RACE', 'GLOB'
 ]);
 

@@ -4,7 +4,7 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Know your Skyrim</title>
-		<link rel="stylesheet" href="style.css" />
+		<link rel="stylesheet" href="style.css?v=mw4wtdwy" />
 	</head>
 	<body>
 		<header class="top">
@@ -89,12 +89,10 @@
 			</section>
 		</main>
 
-		<div id="settings-panel" class="settings" hidden>
-			<div class="settings-card">
+			<div id="settings-card" class="settings-card" hidden>
 				<div class="settings-head">
 					<h2>数据来源</h2>
-					<button id="settings-close" class="icon-button">✕</button>
-				</div>
+									</div>
 
 				<label class="field">
 					<span>Mod Organizer 实例</span>
@@ -122,6 +120,43 @@
 				<div id="save-info" class="save-info" hidden></div>
 				<div id="progress-info" class="save-info" hidden></div>
 
+				<h3 class="settings-title">书籍排版</h3>
+				<label class="field">
+					<span>正文（印刷体）</span>
+					<input id="book-body-font" type="text" list="font-list" placeholder="留空用系统衬线" autocomplete="off" />
+				</label>
+				<label class="field">
+					<span>手写体（日记、便条）</span>
+					<input id="book-hand-font" type="text" list="font-list" placeholder="留空则同正文" autocomplete="off" />
+				</label>
+				<label class="field">
+					<span>标题</span>
+					<input id="book-title-font" type="text" list="font-list" placeholder="留空则同正文" autocomplete="off" />
+				</label>
+				<label class="field">
+					<span>字号</span>
+					<input id="book-font-size" type="number" min="12" max="34" step="1" />
+				</label>
+				<datalist id="font-list">
+					<option value="SimSun"></option>
+					<option value="KaiTi"></option>
+					<option value="FangSong"></option>
+					<option value="Microsoft YaHei"></option>
+					<option value="Georgia"></option>
+					<option value="Garamond"></option>
+					<option value="Palatino Linotype"></option>
+					<option value="Book Antiqua"></option>
+					<option value="Times New Roman"></option>
+					<option value="Gabriola"></option>
+					<option value="Segoe Script"></option>
+					<option value="Lucida Calligraphy"></option>
+					<option value="Ink Free"></option>
+				</datalist>
+				<div id="book-preview" class="book-preview">
+					<div class="book-preview-title">示例标题</div>
+					<p>吼之声，源于古老的诺德信仰。这里是一段用来试字体的示例文字，看看行距和字号顺不顺眼。</p>
+				</div>
+
 				<div class="settings-actions">
 					<button id="rebuild" class="primary">重建索引</button>
 					<span id="rebuild-hint" class="dim"></span>
@@ -136,8 +171,8 @@
 					重建索引时页面会短暂不可用。任务进度还读不出来——存档里的变更记录格式没有可靠文档，我不打算猜。
 				</p>
 			</div>
-		</div>
 
-		<script src="app.js"></script>
+
+		<script src="app.js?v=mw4wtdwy"></script>
 	</body>
 </html>

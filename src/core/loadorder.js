@@ -212,7 +212,7 @@ function readHeaderInfo(file) {
 		const buf = Buffer.alloc(24 + dataSize);
 		fs.readSync(fd, buf, 0, buf.length, 0);
 		const localized = (flags & 0x00000080) !== 0;
-		const light = (flags & ESL_FLAG) !== 0;
+		const light = (flags & ESL_FLAG) !== 0 || path.extname(file).toLowerCase() === '.esl';
 		// walk the header fields for MAST entries
 		const masters = [];
 		let pos = 24;
@@ -240,6 +240,17 @@ function readHeaderInfo(file) {
 }
 
 // The whole picture: every active plugin with the file it comes from, numbered the way the game numbers it.
+// The enabled mods of a profile, in priority order (the last one wins a conflict).
+export function profileMods(instanceId, profile) {
+	const instance = detectInstances().find((item) => item.id === instanceId);
+	if (!instance) return { modsDir: '', mods: [] };
+	const base = instance.baseDir || instance.instanceDir;
+	const modsDir = path.join(base, 'mods');
+	const chosen = profile || instance.profile || 'Default';
+	const mods = readModlist(path.join(base, 'profiles', chosen, 'modlist.txt'));
+	return { modsDir, mods };
+}
+
 export function resolveLoadOrder({ instance, gamePath, profile, language } = {}) {
 	let dataDir;
 	let pluginsFile;
@@ -375,6 +386,12 @@ export function resolveLoadOrder({ instance, gamePath, profile, language } = {})
 		});
 	}
 
+	// A plugin file that sits in more than one enabled mod: the last one wins, but the others are worth naming.
+	const duplicates = [];
+	for (const [name, list] of scan.map) {
+		if (list.length > 1) duplicates.push(list[0].file.split(/[\\/]/g).slice(-2).join('/') + '（' + list.length + ' 份）');
+	}
+
 	return {
 		dataDir,
 		gamePath: gamePath || (instance && instance.gamePath),
@@ -384,6 +401,8 @@ export function resolveLoadOrder({ instance, gamePath, profile, language } = {})
 		plugins: resolved,
 		missing,
 		modCount: mods.filter((m) => m.enabled).length,
+		allPlugins: order.length ? order : listed.map((item) => item.name),
+		duplicates,
 		pluginsFile: usedPluginsFile
 	};
 }
