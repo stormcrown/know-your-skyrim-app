@@ -139,3 +139,18 @@ node tools/sanity.js data/index.sqlite
 - 开发模式（`npm run app`）在当前这台机器的 DSH 环境里起不来，会以 `0x80000003` 直接退；打包后的 exe 正常。日常用打包版
 - 重建索引：窗口里点「重建索引」，Electron 下会用 `ELECTRON_RUN_AS_NODE=1` 把 `src/cli.js index` 当 node 跑
 - 端口冲突（4820 被占，通常是还开着命令行版）会弹窗提示改 `config.json` 的 `port`
+
+## 用 WebStorm 调试
+
+`.run/` 里有四个共享运行配置，打开项目就能在右上角下拉里选：
+
+- **Electron 应用（开发模式）** —— 跑 `start-dev.cmd`：清掉 `ELECTRON_RUN_AS_NODE`、打开 9222 调试端口、自动弹 DevTools、用独立的 dev profile（可以和打包版同时跑）
+- **Electron 主进程断点（9229）** —— 跑 `start-inspect.cmd`：带 `--inspect-brk=9229`，起来后会等调试器；WebStorm 用 "Attach to Node.js/Chrome" 连 9229
+- **页面调试（JavaScript Debug, 4820）** —— 直接对 `http://127.0.0.1:4820/` 做 JS Debug，能在 `src/web/app.js` 里下断点（打包版开着也能用）
+- **后端服务 / 重建索引** —— 两个 Node.js 配置，断点打在 `src/server.js`、`src/core/*`
+
+注意：
+
+- Electron 的 node 解释器要在运行配置里指到 `node_modules\electron\dist\electron.exe`；若你的 WebStorm 版本不认，就用上面那两个 `ShConfigurationType`（脚本）配置，最稳
+- 环境变量里一定要把 `ELECTRON_RUN_AS_NODE` 清空，否则 Electron 退化成纯 node，窗口和断点都别想
+- 页面里的断点靠 URL 映射：DevTools 里看到的 `app.js` 对应 `src/web/app.js`，i18n 在 `src/web/i18n.js` 和 `i18n-tw.js`

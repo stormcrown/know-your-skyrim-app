@@ -1,0 +1,6 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="重建索引（node src/cli.js index）" type="NodeJSConfigurationType" factoryName="Node.js" path-to-js-file="src/cli.js" working-dir="$PROJECT_DIR$" application-parameters="index">
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>

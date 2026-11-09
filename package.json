@@ -15,7 +15,8 @@
     "start": "node src/cli.js serve",
     "spike": "node tools/spike.js",
     "app": "electron .",
-    "app:dev": "electron . --dev"
+    "app:dev": "electron . --dev",
+    "app:debug": "electron . --dev"
   },
   "main": "electron/main.cjs",
   "productName": "Know your Skyrim",

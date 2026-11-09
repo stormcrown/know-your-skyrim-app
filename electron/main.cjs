@@ -39,7 +39,10 @@ function openWindow() {
 		}
 	});
 
-	mainWindow.once('ready-to-show', () => mainWindow.show());
+	mainWindow.once('ready-to-show', () => {
+		mainWindow.show();
+		if (DEV) mainWindow.webContents.openDevTools({ mode: 'detach' });
+	});
 	mainWindow.on('closed', () => {
 		mainWindow = null;
 	});
@@ -137,6 +140,13 @@ async function startServer() {
 		httpServer.once('error', reject);
 		httpServer.listen(port, HOST, resolve);
 	});
+}
+
+// 开发模式：给渲染进程开调试端口，方便 WebStorm / Chrome DevTools 附着
+const DEV = process.argv.includes('--dev') || process.env.KYS_DEV === '1';
+if (DEV) {
+	app.commandLine.appendSwitch('remote-debugging-port', '9222');
+	app.commandLine.appendSwitch('enable-logging');
 }
 
 const gotLock = app.requestSingleInstanceLock();

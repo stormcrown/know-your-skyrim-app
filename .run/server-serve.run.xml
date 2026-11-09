@@ -1,0 +1,6 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="后端服务（node src/cli.js serve）" type="NodeJSConfigurationType" factoryName="Node.js" path-to-js-file="src/cli.js" working-dir="$PROJECT_DIR$" application-parameters="serve --no-open">
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>
