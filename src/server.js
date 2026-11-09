@@ -15,6 +15,7 @@ import { DB_FILE, loadConfig, saveConfig } from './core/config.js';
 import { createSaveTables } from './core/db.js';
 import { readQuestProgress } from './core/savequests.js';
 import { resolveBookTokens, serveBookArt } from './core/booktext.js';
+import { systemFonts } from './core/fonts.js';
 import { addressLibrary, compatibilityChecks, gameVersions, resolveGamePath, sksePlugins, systemReport } from './core/systemcheck.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -356,6 +357,10 @@ export function createServer(dbFile = DB_FILE) {
 		try {
 			if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/bookart/')) {
 				return serveStatic(res, url.pathname);
+			}
+
+			if (url.pathname === '/api/fonts') {
+				return json(res, { fonts: systemFonts() });
 			}
 
 			if (url.pathname === '/api/config' && req.method === 'GET') {

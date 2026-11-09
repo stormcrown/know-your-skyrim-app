@@ -6,3 +6,5 @@ src/config.json
 .idea/
 *.log
 _minel*
+.run/
+dist/*

@@ -357,7 +357,7 @@ function applyBookStyle(config) {
 }
 
 // 界面语言：auto 跟随系统；中文分简繁；英文走词表（见 i18n.js），数据（名字、书页正文）不翻
-const LANGS = ['auto', 'zh-CN', 'zh-TW', 'en'];
+const LANGS = ['auto', 'zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'ru', 'de', 'fr'];
 
 function systemLang() {
 	const tags = [navigator.language, ...(navigator.languages || [])].filter(Boolean);
@@ -379,10 +379,13 @@ function translateText(text) {
 	if (!text || !text.trim()) return text;
 	const lang = uiLang();
 	if (lang === 'zh-TW') return window.toTraditional ? window.toTraditional(text) : text;
-	if (lang !== 'en') return text;
+	if (lang === 'zh-CN') return text;
+	// 各语言自己的词表优先，缺的回退英文
+	const own = (window.KYS_I18N || {})[lang] || {};
 	const table = window.KYS_EN || {};
 	const trimmed = text.trim();
-	if (table[trimmed] !== undefined) return text.replace(trimmed, table[trimmed]);
+	const hit = own[trimmed] !== undefined ? own[trimmed] : table[trimmed];
+	if (hit !== undefined) return text.replace(trimmed, hit);
 	for (const [pattern, render] of window.KYS_EN_TEMPLATES || []) {
 		const match = trimmed.match(pattern);
 		if (match) return text.replace(trimmed, render(match));
@@ -391,7 +394,8 @@ function translateText(text) {
 }
 
 // 这些区域里放的是数据，不能翻
-const NO_TRANSLATE = '.book-panel, .longtext, .detail-title, .detail-sub, .link, .check-list, .stats td.v, .quest-stages td.v, .combo-list, .rowlink';
+const NO_TRANSLATE =
+	'.book-panel, .longtext, .entry-name, .detail-sub, .link, .check-list, .stats td.v, .quest-stages td.v, .combo-list, .rowlink, #book-body-font option, #book-hand-font option, #book-title-font option';
 
 function localize(root) {
 	if (!root) return;
@@ -416,7 +420,12 @@ function localize(root) {
 
 function refreshLanguage() {
 	localize(document.body);
-	document.title = uiLang() === 'en' ? 'Know your Skyrim' : 'Know your Skyrim';
+	// 明确标记过的节点（比如标题下的副标题）单独翻，因为它们落在 data 区域里
+	for (const node of document.querySelectorAll('[data-i18n]')) {
+		if (node.__kysOriginal === undefined) node.__kysOriginal = node.textContent;
+		node.textContent = translateText(node.__kysOriginal);
+	}
+	document.title = 'Know your Skyrim';
 }
 
 function applyTheme(theme) {
@@ -454,7 +463,9 @@ async function boot() {
 
 	renderSubKinds();
 	refreshLanguage();
-		await loadStatus().catch((err) => {
+	loadSystemFonts();
+	tabFromUrl();
+	await loadStatus().catch((err) => {
 		$('subtitle').textContent = err.status === 503 ? '索引正在重建，等一下' : '读索引失败：' + err.message;
 	});
 	if (state.stats) {
@@ -580,6 +591,15 @@ function sortOf(family) {
 
 function dirOf(family) {
 	return state.sortDirBy[family] || 'asc';
+}
+
+// ?tab=system / ?tab=settings 直接打开某一页，调试和分享都方便
+function tabFromUrl() {
+	const tab = new URLSearchParams(location.search).get('tab');
+	if (!tab) return false;
+	if (!FAMILIES.some((family) => family.key === tab)) return false;
+	state.family = tab;
+	return true;
 }
 
 function renderFamilies() {
@@ -1056,6 +1076,38 @@ function fillSettings(config) {
 	renderRebuildState(config.rebuild);
 }
 
+// 字体下拉用的是系统里装的全部字体，启动时拉一次
+// 字体下拉：第一项是「默认/同正文」，后面是系统里装的全部字体
+async function loadSystemFonts() {
+	let fonts = [];
+	try {
+		const result = await api('/api/fonts');
+		fonts = result.fonts || [];
+	} catch {
+		fonts = [];
+	}
+	const config = state.config || {};
+	const targets = [
+		['book-body-font', config.bookBodyFont, '默认（系统衬线）'],
+		['book-hand-font', config.bookHandFont, '同正文'],
+		['book-title-font', config.bookTitleFont, '同正文']
+	];
+	for (const [id, value, emptyLabel] of targets) {
+		const select = $(id);
+		if (!select) continue;
+		select.textContent = '';
+		const entries = [[emptyLabel, '']];
+		for (const name of fonts) entries.push([name, name]);
+		for (const [label, optionValue] of entries) {
+			const option = document.createElement('option');
+			option.value = optionValue;
+			option.textContent = label;
+			select.append(option);
+		}
+		select.value = value || '';
+	}
+}
+
 function fillBookSettings(config) {
 	$('book-body-font').value = config.bookBodyFont || '';
 	$('book-hand-font').value = config.bookHandFont || '';
@@ -1168,7 +1220,9 @@ async function renderSettingsPage() {
 	if (card.parentElement !== detailEl) {
 		detailEl.textContent = '';
 		detailEl.append(el('h2', 'detail-title', '配置'));
-		detailEl.append(el('div', 'detail-sub', '换加载顺序、换存档、重建索引——都在这一页'));
+		const sub = el('div', 'detail-sub', '换加载顺序、换存档、重建索引——都在这一页');
+		sub.dataset.i18n = '1';
+		detailEl.append(sub);
 		detailEl.append(card);
 	}
 	try {
@@ -1180,6 +1234,7 @@ async function renderSettingsPage() {
 	} catch (err) {
 		$('rebuild-hint').textContent = '读配置失败：' + err.message;
 	}
+	refreshLanguage();
 }
 
 function openSettings() {
@@ -1436,13 +1491,17 @@ async function renderSystem() {
 		const warns = checks.filter((check) => check.level === 'warn').length;
 		const { box, summary } = section(`兼容性检查（错误 ${errors} · 警告 ${warns} · 共 ${checks.length} 项）`, true);
 		if (!checks.length) box.append(el('div', 'dim', '没有发现问题。'));
+		const chinese = uiLang() === 'zh-CN' || uiLang() === 'zh-TW';
 		for (const check of checks) {
 			const item = el('div', 'check check-' + check.level);
 			const title = el('div', 'check-title');
 			title.append(el('span', 'check-level', { error: '错误', warn: '警告', info: '提示' }[check.level] || check.level));
-			title.append(el('span', null, check.title));
+			// 服务端给了中英两版，非中文语言用英文那版
+			title.append(el('span', null, chinese ? check.title : check.titleEn || check.title));
 			item.append(title);
-			if (check.detail) item.append(el('div', 'dim', check.detail));
+			const detail = chinese ? check.detail : check.detailEn || check.detail;
+			if (detail) item.append(el('div', 'dim', detail));
+
 			if (check.list?.length) {
 				const list = el('div', 'check-list');
 				for (const entry of check.list.slice(0, 60)) list.append(el('span', 'chip plain', entry));
@@ -1502,6 +1561,8 @@ async function renderSystem() {
 		box.append(download);
 		box.append(el('div', 'dim', '纯文本，可以直接丢给网页版 AI 接着分析。'));
 	}
+	// 页面是动态拼的，收尾再刷一遍语言
+	refreshLanguage();
 }
 
 /* ---------- detail ---------- */
@@ -1533,7 +1594,7 @@ function refName(entry, id) {
 
 function renderDetail(entry) {
 	detailEl.textContent = '';
-	detailEl.append(el('h2', 'detail-title', entry.name || `（无名 ${entry.type}）`));
+	detailEl.append(el('h2', 'detail-title entry-name', entry.name || `（无名 ${entry.type}）`));
 
 	const sub = el('div', 'detail-sub');
 	const hexSpan = el('span', 'hex', entry.hex);

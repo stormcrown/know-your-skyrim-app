@@ -154,3 +154,22 @@ node tools/sanity.js data/index.sqlite
 - Electron 的 node 解释器要在运行配置里指到 `node_modules\electron\dist\electron.exe`；若你的 WebStorm 版本不认，就用上面那两个 `ShConfigurationType`（脚本）配置，最稳
 - 环境变量里一定要把 `ELECTRON_RUN_AS_NODE` 清空，否则 Electron 退化成纯 node，窗口和断点都别想
 - 页面里的断点靠 URL 映射：DevTools 里看到的 `app.js` 对应 `src/web/app.js`，i18n 在 `src/web/i18n.js` 和 `i18n-tw.js`
+
+## 打包
+
+双击 `build.cmd`（或跑 `npm run build`）：
+
+- 打包版输出到 `D:\Develop\KnowYourSkyrim`，启动是里面的 `start.cmd`
+- 会顺手把索引（约 287MB）、`config.json`、书页插图复制进去，再压缩成 `dist\KnowYourSkyrim-<版本>-win-x64.zip`
+- `build.cmd /nodata`：只打包不复制索引，几秒完事，适合改完代码快速看效果
+- 版本号取自 `package.json` 的 `version`
+
+脚本在 `tools/build.ps1`（编排）和 `tools/zip-app.ps1`（压缩）。之所以不直接在 .cmd 里串 `node`：在某些 Electron 宿主环境里 node 一退出会把批处理一起掐掉，走 PowerShell 才稳。
+
+## 界面语言
+
+banner 右上角切换，默认「自动（跟随系统）」：系统中文按简繁自动选，日/韩/俄/德/法按前缀匹配，其它走英文。
+
+- 简体中文、繁體中文（OpenCC 字表转换）、English 是全量词条
+- 日本語、한국어、Русский、Deutsch、Français 覆盖主要界面（导航、分类、表头、设置、状态提示），少数长句没翻的会回退英文
+- 词条位置：`src/web/i18n.js`（英文）、`src/web/i18n-tw.js`（简繁字表）、`src/web/i18n-locales.js`（日韩俄德法）

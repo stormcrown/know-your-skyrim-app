@@ -16,7 +16,8 @@
     "spike": "node tools/spike.js",
     "app": "electron .",
     "app:dev": "electron . --dev",
-    "app:debug": "electron . --dev"
+    "app:debug": "electron . --dev",
+    "build": "node tools/package-app.mjs --with-data"
   },
   "main": "electron/main.cjs",
   "productName": "Know your Skyrim",
