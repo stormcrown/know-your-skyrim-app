@@ -20,6 +20,6 @@
   "main": "electron/main.cjs",
   "productName": "Know your Skyrim",
   "devDependencies": {
-    "electron": "^45.2.3"
+    "electron": "^43.3.0"
   }
 }

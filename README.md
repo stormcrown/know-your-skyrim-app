@@ -130,10 +130,12 @@ node tools/sanity.js data/index.sqlite
 
 ## 桌面应用（Electron）
 
-分支 `app` 上加了 Electron 外壳，双击 `启动应用.cmd` 就是窗口版：本地服务跑在主进程里，窗口打开 `http://127.0.0.1:4820/`，关窗口服务一起停。
+分支 `app` 上加了 Electron 外壳。打包好的程序在 `D:\Develop\KnowYourSkyrim`，双击 `start.cmd`（或桌面的「Know your Skyrim」快捷方式）就能开窗口；本地服务跑在主进程里，关窗口服务一起停。
 
-- 开发运行：`npm install` 之后 `npm run app`（或直接双击 `启动应用.cmd`）
-- 命令行版还在：`node src/cli.js serve`，`npm start`
-- 重建索引在窗口里点「重建索引」就行；Electron 下子进程会带 `ELECTRON_RUN_AS_NODE=1` 跑 `src/cli.js`
-- 启动脚本里为什么要 `set ELECTRON_RUN_AS_NODE=`：在 Electron 宿主（比如 DSH Desktop）里拉起子进程时，这个变量会被继承，electron.exe 看到它就只当 node 用，窗口起不来
-- 端口冲突（4820 被占用，通常是还开着命令行版服务）会弹窗提示改 `config.json` 里的 `port`
+打包：`node tools/package-app.mjs --with-data`
+
+- 产物结构：electron 发行版 + `resources\app\{src,electron,package.json,data,config.json}`
+- `start.cmd` 里为什么有 `set ELECTRON_RUN_AS_NODE=`：在 Electron 宿主（DSH Desktop 之类）里拉起来的子进程会继承这个变量，exe 看到它就只当 node 用，窗口起不来
+- 开发模式（`npm run app`）在当前这台机器的 DSH 环境里起不来，会以 `0x80000003` 直接退；打包后的 exe 正常。日常用打包版
+- 重建索引：窗口里点「重建索引」，Electron 下会用 `ELECTRON_RUN_AS_NODE=1` 把 `src/cli.js index` 当 node 跑
+- 端口冲突（4820 被占，通常是还开着命令行版）会弹窗提示改 `config.json` 的 `port`
