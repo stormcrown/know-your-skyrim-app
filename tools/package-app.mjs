@@ -7,6 +7,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
+// 这个脚本有时会被 Electron 的 node 跑（ELECTRON_RUN_AS_NODE），asar 钩子会把 .asar 当归档处理，
+// 复制发行版里的 default_app.asar 就会报 not found。关掉即可。
+process.noAsar = true;
+
 const PROJECT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
 const DIST = path.join(PROJECT, 'node_modules', 'electron', 'dist');
 const TARGET = 'D:\\Develop\\KnowYourSkyrim';
