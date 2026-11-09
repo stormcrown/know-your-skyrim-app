@@ -356,6 +356,52 @@ function applyBookStyle(config) {
 	root.style.setProperty('--book-drop-font', `${hand}, "${body}"`);
 }
 
+// 界面语言：中文原句 → 英文词条（见 i18n.js），数据（名字、书页正文）不翻
+function uiLang() {
+	return state.config && state.config.uiLang === 'en' ? 'en' : 'zh';
+}
+
+function translateText(text) {
+	if (uiLang() !== 'en' || !text || !text.trim()) return text;
+	const table = window.KYS_EN || {};
+	const trimmed = text.trim();
+	if (table[trimmed] !== undefined) return text.replace(trimmed, table[trimmed]);
+	for (const [pattern, render] of window.KYS_EN_TEMPLATES || []) {
+		const match = trimmed.match(pattern);
+		if (match) return text.replace(trimmed, render(match));
+	}
+	return text;
+}
+
+// 这些区域里放的是数据，不能翻
+const NO_TRANSLATE = '.book-panel, .longtext, .detail-title, .detail-sub, .link, .check-list, .stats td.v, .quest-stages td.v, .combo-list, .rowlink';
+
+function localize(root) {
+	if (!root) return;
+	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const nodes = [];
+	while (walker.nextNode()) nodes.push(walker.currentNode);
+	for (const node of nodes) {
+		const parent = node.parentElement;
+		if (!parent || parent.closest(NO_TRANSLATE)) continue;
+		if (node.__kysOriginal === undefined) node.__kysOriginal = node.nodeValue;
+		node.nodeValue = translateText(node.__kysOriginal);
+	}
+	for (const element of root.querySelectorAll('[placeholder], [title]')) {
+		if (!element.__kysAttrs) element.__kysAttrs = {};
+		for (const attribute of ['placeholder', 'title']) {
+			if (!element.hasAttribute(attribute)) continue;
+			if (element.__kysAttrs[attribute] === undefined) element.__kysAttrs[attribute] = element.getAttribute(attribute);
+			element.setAttribute(attribute, translateText(element.__kysAttrs[attribute]));
+		}
+	}
+}
+
+function refreshLanguage() {
+	localize(document.body);
+	document.title = uiLang() === 'en' ? 'Know your Skyrim' : 'Know your Skyrim';
+}
+
 function applyTheme(theme) {
 	const chosen = THEMES.includes(theme) ? theme : 'auto';
 	document.documentElement.dataset.theme = chosen;
@@ -390,12 +436,14 @@ async function boot() {
 	}
 
 	renderSubKinds();
+	refreshLanguage();
 		await loadStatus().catch((err) => {
 		$('subtitle').textContent = err.status === 503 ? '索引正在重建，等一下' : '读索引失败：' + err.message;
 	});
 	if (state.stats) {
 		wire();
 		renderFamilies();
+	refreshLanguage();
 				await search();
 		const hash = location.hash.match(/#\/entry\/([0-9a-f]+)/i);
 		if (hash) openEntry(hash[1]);
@@ -663,6 +711,7 @@ async function search() {
 	state.rows = result.rows;
 	state.total = result.total;
 	renderRows();
+	refreshLanguage();
 	renderPager();
 	$('save-chip').hidden = !(state.saveMeta && state.saveMeta.playerName);
 	renderSaveChip();
@@ -982,6 +1031,7 @@ function fillSettings(config) {
 	fillProfiles(config.profiles, config.config.profile);
 	fillSaves(config.saves, config.config.saveFile);
 	$('language').value = config.config.language || 'chinese';
+	$('ui-lang').value = config.config.uiLang === 'en' ? 'en' : 'zh';
 	fillBookSettings(config.config);
 	applyBookStyle(config.config);
 	renderSaveInfo(config.save);
@@ -1267,6 +1317,11 @@ function wire() {
 	$('profile').addEventListener('change', () => postConfig({ profile: $('profile').value }));
 	$('language').addEventListener('change', () => postConfig({ language: $('language').value }));
 	$('save').addEventListener('change', () => pickSave($('save').value));
+	$('ui-lang').addEventListener('change', async () => {
+		state.config = { ...(state.config || {}), uiLang: $('ui-lang').value };
+		await postConfig({ uiLang: $('ui-lang').value });
+		refreshLanguage();
+	});
 	for (const id of ['book-body-font', 'book-hand-font', 'book-title-font', 'book-font-size']) {
 		const input = $(id);
 		input.addEventListener('change', async () => {
@@ -1537,6 +1592,7 @@ function renderDetail(entry) {
 	renderLinks(entry, section);
 	renderBacklinks(entry, section);
 	renderPlacements(entry, section);
+	refreshLanguage();
 }
 
 function statsTable(rows) {
