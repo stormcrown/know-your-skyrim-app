@@ -1,175 +1,144 @@
-# Know your Skyrim · App
+# Know your Skyrim
 
+在游戏外面翻你 Skyrim SE 的全部数据：物品、人物、任务、地点、法术、配方、书籍……按当前加载顺序解析一遍，存成本地索引，用窗口或浏览器查。
 
+An out-of-game browser for your Skyrim SE load order: every item, actor, quest, place, spell, recipe and book, parsed once into a local index and served in a window or a browser tab.
 
-Idea from  https://github.com/laymovi/know-your-skyrim 
+灵感来自 SKSE 模组 [know-your-skyrim](https://github.com/laymovi/know-your-skyrim)——同一个念头，读同一份数据，只是换到桌面上跑。
+Inspired by the SKSE mod [know-your-skyrim](https://github.com/laymovi/know-your-skyrim) — same idea, same data, running outside the game.
 
-Make by Deepseek
+[中文](#中文) · [English](#english)
 
-上古卷轴 5 SE 的**外部图鉴**：不进游戏，直接把你这个存档的整个 load order 拆开，所有物品、人物、任务、地点、天赋摆在一张表里查。
+---
 
-原版 `know-your-skyrim` 是 SKSE 模组，在游戏里开浏览器；这个是它的城外版——同一个念头，读同一份数据，只是换到桌面上跑。
+## 中文
 
-## 它读什么
+### 这是什么
 
-直接解析插件文件本身，不依赖游戏、不依赖 Mod Organizer 运行：
+把 Skyrim SE 的插件（ESM/ESP/ESL）读一遍，还原游戏里的全部记录：名字、数值、附魔、效果、任务阶段与日记、地点与摆放、书籍正文。数据只在本机，不联网、不上传。
 
-- `.esm` / `.esp` / `.esl` 的 TES4 记录（含嵌套组、压缩记录、`XXXX` 长字段）
-- 本地化字符串表 `Data/Strings/*.STRINGS` / `.DLSTRINGS`（所以名字、书名、任务日志都是你游戏里看到的中文）
-- MO2 的 `loadorder.txt`（真正的加载顺序）、`plugins.txt`（哪些是勾上的；它不含 Skyrim.esm 和 DLC，顺序也不能信）、`modlist.txt`（mod 优先级）、实例 `ModOrganizer.ini`（游戏路径、实例根目录、当前配置）
-- form id 按 load order 重新编号，轻插件（ESL/CC）落到 `0xFE` 槽位——所以界面上的 `00012EB7` 就能直接拿去控制台 `player.additem`
+### 功能
 
-## 需要什么
+- **全量数据**：武器、护甲、消耗品、材料、法术、龙吼、天赋、人物、派系、任务、地点、容器、等级表、关键词、配方
+- **按加载顺序解析**：支持 MO2 实例/配置、ESL 轻量插件、多插件覆盖；重复插件、缺失前置会标出来
+- **任务**：阶段、目标、日记合成一张表（目标按索引对到同号阶段）；任务链（NAM0 + 别名引用）画成树；三态进度（未接受/进行中/已完成）；触发条件解析成句子
+- **书籍**：按游戏标记排版（`<font>`、`<b>`、`<br>`、`[pagebreak]`），书里引用的插图从 BSA 里解出来直接显示；`<Alias=Player>` 会换成存档里的角色名
+- **存档**：只读解析 `.ess`，读角色名、等级、位置和任务进度
+- **系统页**：游戏/SKSE/CK 版本、SKSE 插件清单、兼容性检查（缺失前置、重复文件、插件上限…），可导出检测报告
+- **多语言界面**：简体中文、繁體中文、English、日本語、한국어、Русский、Deutsch、Français；默认跟随系统
+- **主题**：跟随系统 / 浅色 / 深色 / GitHub / VS Code / WebStorm
 
-- Windows + Node.js 22.5 以上（要用内置的 `node:sqlite`，不用 npm install，一个依赖都没有）
-- 一份 Skyrim SE（有 Data 目录即可，游戏不用开着）
+### 怎么用
 
-## 怎么用
+1. 下载发行版压缩包，解压到任意目录（比如 `D:\Develop\KnowYourSkyrim`）
+2. 双击 `start.cmd` 或 `KnowYourSkyrim.exe` 打开窗口
+3. 设置页里选 Mod Organizer 实例、配置（Profile）和字符串语言，点「重建索引」
+4. 之后按分类随便查；换加载顺序或存档后再重建一次
 
-```bat
-:: 看看机器上有哪些 MO2 实例
-node src/cli.js instances
+索引默认和程序放一起（`resources\app\data\index.sqlite`），首次全量解析，1100 个插件大约 2–3 分钟。
 
-:: 建索引（自动挑一个 Skyrim SE 的 MO2 实例与它选中的配置）
-node src/cli.js index
+### 开发
 
-:: 或者指定实例和配置
-node src/cli.js index --instance "SkyrimSEAll" --profile "MakeLoveOstim"
+| 项目 | 版本 / 说明 |
+| --- | --- |
+| 运行环境 | Windows 10 / 11 x64 |
+| Electron | 43.3.0 |
+| Node.js | 24.17.0（开发与打包） |
+| 运行时依赖 | 无（只用 Node 内置模块 + Electron） |
+| 数据库 | `node:sqlite`（Node 内置），单文件索引 |
+| 界面 | 原生 HTML/CSS/JS，无框架 |
+| 打包 | `build.cmd` → `tools/package-app.mjs` + `tools/zip-app.ps1` |
 
-:: 没装 MO2、只有游戏目录
-node src/cli.js index --game "F:\Games\Skyrim Special Edition"
-
-:: 打开界面（默认 4820 端口，自动开浏览器）
-node src/cli.js serve
-```
-
-也可以直接双击 `启动.cmd`。
-
-第一次建索引会把每个插件读一遍，一千多个插件大概两三分钟；索引落在 `data/index.sqlite`，之后打开是秒开。
-
-## 界面里的设置（右上角 ⚙）
-
-- 选 Mod Organizer 实例 → 选配置（Profile）→ 选语言
-- 选一个存档：只读它的头部，显示角色名、等级、位置、游戏内日期、种族、存盘时间。**只读，不写回存档**
-- 「重建索引」在当前页面里跑：进度条走完自动重新加载，期间搜索会暂时报「正在重建索引」
-- 选好的实例 / 配置 / 语言 / 存档记在 `config.json`，下次启动直接用
-
-## 界面怎么查
-
-- 顶部按大类切：武器 / 护甲 / 药水 / 材料 / 书籍 / 卷轴 / 杂物 / 人物 / 任务 / 地点 / 天赋 / 法术 / 配方 / 关键词 / 等级表
-- 大类下面还有一层二级分类（每个大类至少一种；护甲两种、人物两种、任务三种，都可以叠加）：
-  - 武器：单手 / 双手 / 弓 / 弩 / 法杖 / 其他（读武器记录的动画类型，不是猜名字）
-  - 护甲：类型（轻甲 / 重甲 / 服装）+ 部位（头盔 / 身体 / 手 / 脚 / 饰品 / 盾牌），两行可以同时用
-  - 药水 / 材料 / 卷轴：按首个效果的 edid 分 恢复 / 强化 / 抗性 / 伤害 / 功能 / 其他
-  - 书籍：法术书 / 技能书 / 书籍 / 其他（读书自己的 flags 位）
-  - 杂物：杂项 / 钥匙 / 弹药 / 灵魂石
-  - 人物：性别（男 / 女）+ 身份（随从 / 商人 / 训练师 / 侍卫 / 可结婚，**多选**，按派系和职业记录判断：`PotentialFollower*`、`Vendor*` 职业、`Trainer*` 职业、`PlayerHousecarl*`、`PotentialMarriage*`）
-  - 任务：来历（主线 / 支线 / 内战 / 公会 / 魔神 / 黎明守卫 / 龙裔 / 跑腿 / 对话 / 其他）+ 进度（做过 / 没做过，来自存档）+ 性质（随机重复 / 普通）
-  - 地点：地点 / 室内 / 室外 / 世界　天赋：单级 / 多级
-  - 法术：法术 / 疾病 / 力量 / 次级力量 / 能力 / 龙吼 / 法杖附魔 / 魔法效果 / 附魔
-  - 配方：锻造 / 磨刀石 / 熔炉 / 制皮 / 烹饪 / 炼金 / 附魔台 / 纺织 / 珠宝 / 木工 / 其他（按工作台关键词）
-  - 关键词：前缀分组　等级表：物品 / 角色
-- 排序：**点表头**就按那一列排，再点一下切正序/逆序，表头右边有箭头。列跟页面走，每页记着各自的排序
-- 左边的列表是表格，列跟着页面走：武器是 名字/伤害/速度/价值/重量/插件，护甲多「类型、部位」，人物是 名字/性别/等级/种族，任务多「进度、性质」，配方多「工作台、材料数」……表头吸顶，一屏能看到十几条
-- 插件筛选在检索条里，是个能打字过滤的下拉：输入 `skyrim`、`bruma` 或者条数都能筛，↑↓ 选、回车定、Esc 退出；选中马上刷新
-- 每页条数可选 20 / 50 / 100 / 200，底下是翻页
-- 检索条（标题和内容之间那条）里是公共条件：搜索框、插件下拉、每页条数、**隐藏内部数据**开关（无名记录、编辑器名、占位/测试名、只给游戏跑的任务、控制器角色、不能拾取的书；规则照原模组 `BrowserIndex.cpp` 的 `Unshown()` 抄的）。关掉开关，被藏起来的条目会带红色原因标签
-- 武器和护甲页有「筛选」行：有附魔 / 无附魔 / 唯一 / 魔神器，可以叠加。**唯一**的定义是：世界里只摆了一份、没有配方能打造、也不在等级表里；**魔神器**按 `DaedricArtifact` 关键词认
-- 材料页有「效果搜索」和「强度 ≥」两个筛选，强度按效果记录的 magnitude 算
-- 任务页面自己有「日记」开关（隐藏没有日记的任务）和进度、性质两行筛选
-- 主题下拉：跟随系统（默认）/ 浅色 / 深色 / GitHub 浅色 / GitHub 深色 / VS Code 深色 / WebStorm 深色
-- 搜索框支持：
-  - `铁剑` 名字、说明、任务日志里都翻
-  - `@skyrim` 只看某个插件（也可以是 mod 名）
-  - `#ArmorMaterialDaedric` 按关键词
-  - `$强化锻造` 按效果
-  - `钢制 -书` 排除
-- 右边详情：数值、效果（强度/秒/范围）、关键词、合成配方、谁带着、摆在哪个地牢、谁引用它；每个名字都能点进去
-- 地址栏 `#/entry/00012EB7` 可以直接发给别人（同一个 load order 下有效）
-
-## 现在有什么、没什么
-
-有：物品（WEAP/ARMO/ALCH/INGR/BOOK/MISC/KEYM/AMMO/SLGM/SCRL）、人物（NPC_，含派系/等级/不死标记/随身物品/天赋）、任务（阶段+日志、目标）、地点（LCTN 层级、CELL、WRLD）、天赋（PERK）、法术/龙吼/魔法效果/附魔、派系（FACT 关系）、配方（COBJ 反向查）、关键词、等级表（LVLI/LVLN）、容器内容、每个物品摆放在哪个 cell（REFR 摆放点）。
-
-没有：从编译脚本推出来的任务奖励与对话（模组那边是解 papyrus 的，这里还没做）、3D 模型预览、贴图来源（Mod Organizer 的冲突解析只做到插件文件，没做纹理）、进度模式（progression）。这些是下一步，不是这一版。
-
-**存档里的任务进度：做出来了。** 在设置里选存档，会解析并缓存到 `data/save.json`。任务页面下面第三行就是进度筛选（做过 / 没做过），任务详情页把阶段、目标、进度合成一段：进度摘要（走过几个、最远阶段）→ 目标清单 → 整张阶段表，每个阶段的日记文本都列出来，右边一列是存档里走没走过（走过的行标绿、最远阶段高亮）；列表里做过的任务带绿色「做过」标签。重建索引后进度会自动补回去。
-
-怎么读的：SE 存档头之后是 LZ4 块压缩（老版本是 zlib），解开是 change-form 列表；QUST 那条里阶段是 `{int16 阶段, uint8 状态}` 数组。**每个读出的阶段号都必须在插件定义的阶段表里找得到**，找不到整条丢掉——所以偏移猜错产生的垃圾活不下来，界面上的数字只有存档里真有的。实测你那份存档：883 条任务有记录，MQ101 走过 124 个阶段里的 94 个。
-
-物品这边还没有：「已见」是原模组自己写进 SKSE co-save 的，存档里不等于有；玩家背包在 REFR 的 inventory 字段里，那部分还没解。所以「只看我做过的物品」暂时做不了，我不拿别的东西充数。
-
-另外几件得说清楚：
-
-1. 重复插件文件（同一个 esp 出现在多个 mod 里）按 `modlist.txt` 靠后的优先——这是 MO2 左栏的顺序。要是你发现某个补丁读出来的不是实际生效的那份，把那个 mod 的路径告诉我，我加个显式覆盖。
-2. 语言默认 `chinese`，要英文表就 `--language english`。
-3. 名字取最后一个插件给的名字，跟游戏里显示的一致——所以装了一堆 WACCF 这类英文补丁之后，铁剑会显示成 `Iron Sword`。补丁只改数值不给名字的，保留原来那份中文名。
-4. 重建索引前先把界面服务关掉（Windows 上占着文件的索引删不掉）。索引本身一份 `data/index.sqlite`，换配置就重跑一次。
-
-## 目录
+目录：
 
 ```
-src/core/tes4.js      插件二进制格式：记录、组、压缩、字段
-src/core/strings.js   .STRINGS / .DLSTRINGS 读取
-src/core/loadorder.js MO2 实例发现、load order 解析、form id 编号
-src/core/extract.js   每种记录怎么变成一条图鉴条目
-src/core/indexer.js   建索引
-src/core/query.js     搜索与详情
-src/web/*             界面（原生 JS，没有构建步骤）
-tools/                spike / dump / sanity，开发时用
+src/core/       解析与索引（TES4 记录、BSA、存档、索引、查询）
+src/server.js   本地 HTTP 服务与 JSON 接口
+src/web/        窗口里的页面（无构建步骤）
+electron/       Electron 主进程（内置服务 + 窗口）
+tools/          打包、BSA 解包、字体/多语言辅助脚本
 ```
 
-## 自检
+开发运行：`npm install` 之后 `npm run app`；只跑服务：`node src/cli.js serve`；重建索引：`node src/cli.js index`。
 
-```bat
-node tools/sanity.js data/index.sqlite
+打包：双击 `build.cmd`，程序输出到 `D:\Develop\KnowYourSkyrim`，压缩包在 `dist\`。
+
+WebStorm 调试配置在 `.run/` 下（Electron 开发模式、主进程断点、页面 JS Debug、后端 serve）。
+
+### 说明与边界
+
+- 只读：不修改任何插件或存档
+- 数据全在本机；除了读你自己的游戏文件，程序不联网
+- 「哪个阶段加哪个目标」写在编译后的脚本里，程序只能按索引对齐，个别任务可能对不上
+- 物品「是否见过」只存在于 SKSE 的 co-save，这里判断不了
+
+### 许可
+
+MIT
+
+---
+
+## English
+
+### What it is
+
+It reads your Skyrim SE plugins (ESM/ESP/ESL) and rebuilds every record the game holds: names, stats, enchantments, effects, quest stages and journals, locations and placements, book text. Everything stays on your machine — no network, no upload.
+
+### Features
+
+- **Full data**: weapons, armor, consumables, ingredients, spells, shouts, perks, actors, factions, quests, places, containers, leveled lists, keywords, recipes
+- **Load-order aware**: Mod Organizer instances/profiles, ESL light plugins, record overrides; duplicate plugins and missing masters are reported
+- **Quests**: stages, objectives and journal in one table (objectives matched to the stage with the same index); quest chain (NAM0 + alias references) drawn as a tree; three-state progress (not started / in progress / completed); conditions rendered as readable sentences
+- **Books**: laid out from the game's own markup (`<font>`, `<b>`, `<br>`, `[pagebreak]`), illustrations extracted from the BSA and shown inline; `<Alias=Player>` becomes the character name from your save
+- **Saves**: read-only parse of `.ess` — character name, level, location, quest progress
+- **System page**: game / SKSE / CK versions, SKSE plugin list, compatibility checks (missing masters, duplicate files, plugin limits…), exportable report
+- **UI languages**: 简体中文, 繁體中文, English, 日本語, 한국어, Русский, Deutsch, Français — follows the system language by default
+- **Themes**: follow system / light / dark / GitHub / VS Code / WebStorm
+
+### Usage
+
+1. Download the release archive and unpack it anywhere (`D:\Develop\KnowYourSkyrim` works)
+2. Run `start.cmd` (or `KnowYourSkyrim.exe`)
+3. In Settings pick your Mod Organizer instance, profile and string language, then hit **Rebuild index**
+4. Browse by family; rebuild after changing your load order or save
+
+The index lives next to the app (`resources\app\data\index.sqlite`). A full build of ~1100 plugins takes 2–3 minutes.
+
+### Development
+
+| Item | Version / notes |
+| --- | --- |
+| Platform | Windows 10 / 11 x64 |
+| Electron | 43.3.0 |
+| Node.js | 24.17.0 (development and packaging) |
+| Runtime dependencies | none — only Node built-ins plus Electron |
+| Database | `node:sqlite` (built into Node), single-file index |
+| UI | plain HTML/CSS/JS, no framework |
+| Packaging | `build.cmd` → `tools/package-app.mjs` + `tools/zip-app.ps1` |
+
+Layout:
+
+```
+src/core/       parsing and indexing (TES4 records, BSA, saves, query)
+src/server.js   local HTTP server and JSON API
+src/web/        the page shown in the window (no build step)
+electron/       Electron main process (in-process server + window)
+tools/          packaging, BSA unpacking, font/i18n helpers
 ```
 
-对一份真索引跑一遍：插件行数、form id 槽位、名字、配方链接、摆放点、几种搜索的耗时。另有 `tools/verify.js`，对只建了 Skyrim.esm 的索引核对游戏里公认的数值（铁剑 25 金 / 9 重 / 7 伤害，铁甲 125 / 30 / 25 护甲，贝莱托尔的派系与随身物品，MQ101 的阶段日志）。
+Dev run: `npm install`, then `npm run app`; server only: `node src/cli.js serve`; rebuild index: `node src/cli.js index`.
 
+Packaging: run `build.cmd`; the app goes to `D:\Develop\KnowYourSkyrim` and the zip to `dist\`.
 
-## 桌面应用（Electron）
+WebStorm run configurations live in `.run/` (Electron dev mode, main-process breakpoints, page JS debug, backend serve).
 
-分支 `app` 上加了 Electron 外壳。打包好的程序在 `D:\Develop\KnowYourSkyrim`，双击 `start.cmd`（或桌面的「Know your Skyrim」快捷方式）就能开窗口；本地服务跑在主进程里，关窗口服务一起停。
+### Limits
 
-打包：`node tools/package-app.mjs --with-data`
+- Read-only: never writes to plugins or saves
+- Everything is local; the app makes no network calls beyond reading your own game files
+- Which stage adds which objective lives in compiled scripts, so a few quests may not line up
+- Whether you have "seen" an item only exists in SKSE's co-save, so it cannot be determined here
 
-- 产物结构：electron 发行版 + `resources\app\{src,electron,package.json,data,config.json}`
-- `start.cmd` 里为什么有 `set ELECTRON_RUN_AS_NODE=`：在 Electron 宿主（DSH Desktop 之类）里拉起来的子进程会继承这个变量，exe 看到它就只当 node 用，窗口起不来
-- 开发模式（`npm run app`）在当前这台机器的 DSH 环境里起不来，会以 `0x80000003` 直接退；打包后的 exe 正常。日常用打包版
-- 重建索引：窗口里点「重建索引」，Electron 下会用 `ELECTRON_RUN_AS_NODE=1` 把 `src/cli.js index` 当 node 跑
-- 端口冲突（4820 被占，通常是还开着命令行版）会弹窗提示改 `config.json` 的 `port`
+### License
 
-## 用 WebStorm 调试
-
-`.run/` 里有四个共享运行配置，打开项目就能在右上角下拉里选：
-
-- **Electron 应用（开发模式）** —— 跑 `start-dev.cmd`：清掉 `ELECTRON_RUN_AS_NODE`、打开 9222 调试端口、自动弹 DevTools、用独立的 dev profile（可以和打包版同时跑）
-- **Electron 主进程断点（9229）** —— 跑 `start-inspect.cmd`：带 `--inspect-brk=9229`，起来后会等调试器；WebStorm 用 "Attach to Node.js/Chrome" 连 9229
-- **页面调试（JavaScript Debug, 4820）** —— 直接对 `http://127.0.0.1:4820/` 做 JS Debug，能在 `src/web/app.js` 里下断点（打包版开着也能用）
-- **后端服务 / 重建索引** —— 两个 Node.js 配置，断点打在 `src/server.js`、`src/core/*`
-
-注意：
-
-- Electron 的 node 解释器要在运行配置里指到 `node_modules\electron\dist\electron.exe`；若你的 WebStorm 版本不认，就用上面那两个 `ShConfigurationType`（脚本）配置，最稳
-- 环境变量里一定要把 `ELECTRON_RUN_AS_NODE` 清空，否则 Electron 退化成纯 node，窗口和断点都别想
-- 页面里的断点靠 URL 映射：DevTools 里看到的 `app.js` 对应 `src/web/app.js`，i18n 在 `src/web/i18n.js` 和 `i18n-tw.js`
-
-## 打包
-
-双击 `build.cmd`（或跑 `npm run build`）：
-
-- 打包版输出到 `D:\Develop\KnowYourSkyrim`，启动是里面的 `start.cmd`
-- 会顺手把索引（约 287MB）、`config.json`、书页插图复制进去，再压缩成 `dist\KnowYourSkyrim-<版本>-win-x64.zip`
-- `build.cmd /nodata`：只打包不复制索引，几秒完事，适合改完代码快速看效果
-- 版本号取自 `package.json` 的 `version`
-
-脚本在 `tools/build.ps1`（编排）和 `tools/zip-app.ps1`（压缩）。之所以不直接在 .cmd 里串 `node`：在某些 Electron 宿主环境里 node 一退出会把批处理一起掐掉，走 PowerShell 才稳。
-
-## 界面语言
-
-banner 右上角切换，默认「自动（跟随系统）」：系统中文按简繁自动选，日/韩/俄/德/法按前缀匹配，其它走英文。
-
-- 简体中文、繁體中文（OpenCC 字表转换）、English 是全量词条
-- 日本語、한국어、Русский、Deutsch、Français 覆盖主要界面（导航、分类、表头、设置、状态提示），少数长句没翻的会回退英文
-- 词条位置：`src/web/i18n.js`（英文）、`src/web/i18n-tw.js`（简繁字表）、`src/web/i18n-locales.js`（日韩俄德法）
+MIT

@@ -1,6 +1,6 @@
 {
   "name": "know-your-skyrim-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "An external catalogue of your Skyrim SE load order: every item, person, quest, place and perk, searchable outside the game.",
   "type": "module",
