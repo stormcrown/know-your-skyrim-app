@@ -126,3 +126,14 @@ node tools/sanity.js data/index.sqlite
 ```
 
 对一份真索引跑一遍：插件行数、form id 槽位、名字、配方链接、摆放点、几种搜索的耗时。另有 `tools/verify.js`，对只建了 Skyrim.esm 的索引核对游戏里公认的数值（铁剑 25 金 / 9 重 / 7 伤害，铁甲 125 / 30 / 25 护甲，贝莱托尔的派系与随身物品，MQ101 的阶段日志）。
+
+
+## 桌面应用（Electron）
+
+分支 `app` 上加了 Electron 外壳，双击 `启动应用.cmd` 就是窗口版：本地服务跑在主进程里，窗口打开 `http://127.0.0.1:4820/`，关窗口服务一起停。
+
+- 开发运行：`npm install` 之后 `npm run app`（或直接双击 `启动应用.cmd`）
+- 命令行版还在：`node src/cli.js serve`，`npm start`
+- 重建索引在窗口里点「重建索引」就行；Electron 下子进程会带 `ELECTRON_RUN_AS_NODE=1` 跑 `src/cli.js`
+- 启动脚本里为什么要 `set ELECTRON_RUN_AS_NODE=`：在 Electron 宿主（比如 DSH Desktop）里拉起子进程时，这个变量会被继承，electron.exe 看到它就只当 node 用，窗口起不来
+- 端口冲突（4820 被占用，通常是还开着命令行版服务）会弹窗提示改 `config.json` 里的 `port`

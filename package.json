@@ -13,6 +13,13 @@
   "scripts": {
     "index": "node src/cli.js index",
     "start": "node src/cli.js serve",
-    "spike": "node tools/spike.js"
+    "spike": "node tools/spike.js",
+    "app": "electron .",
+    "app:dev": "electron . --dev"
+  },
+  "main": "electron/main.cjs",
+  "productName": "Know your Skyrim",
+  "devDependencies": {
+    "electron": "^45.2.3"
   }
 }

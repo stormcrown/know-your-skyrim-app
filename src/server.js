@@ -303,10 +303,13 @@ export function createServer(dbFile = DB_FILE) {
 		closeDb();
 		state.rebuild = { running: true, startedAt: Date.now(), index: 0, total: 0, current: '', entries: 0, error: null, log: [], exit: null };
 
+		// 打包成 Electron 之后 process.execPath 是 electron.exe：带上这个环境变量它才会当 node 用
+		const electronNode = Boolean(process.versions.electron);
 		const child = spawn(process.execPath, [CLI, 'index', '--progress-json', '--db', state.dbFile], {
 			cwd: ROOT,
 			windowsHide: true,
-			stdio: ['ignore', 'pipe', 'pipe']
+			stdio: ['ignore', 'pipe', 'pipe'],
+			env: electronNode ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env
 		});
 
 		let buffer = '';
