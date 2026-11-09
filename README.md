@@ -1,5 +1,11 @@
 # Know your Skyrim · App
 
+
+
+Idea from  https://github.com/laymovi/know-your-skyrim 
+
+Make by Deepseek
+
 上古卷轴 5 SE 的**外部图鉴**：不进游戏，直接把你这个存档的整个 load order 拆开，所有物品、人物、任务、地点、天赋摆在一张表里查。
 
 原版 `know-your-skyrim` 是 SKSE 模组，在游戏里开浏览器；这个是它的城外版——同一个念头，读同一份数据，只是换到桌面上跑。
